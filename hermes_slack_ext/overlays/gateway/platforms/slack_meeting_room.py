@@ -159,3 +159,135 @@ def build_end_prompt(meeting: dict) -> str:
         "회의를 종료합니다. 지금까지 논의를 결정/액션아이템 중심으로 요약하고, "
         "남은 미해결 항목을 정리해 마무리(finalize)하세요. 추가 참가자 호출은 하지 마세요."
     )
+
+
+# ----- Block Kit 렌더러 -----
+
+def _btn(text: str, action_id: str, value: str, *, style: str | None = None) -> dict:
+    el = {"type": "button", "text": {"type": "plain_text", "text": text}, "action_id": action_id}
+    if value:
+        el["value"] = value
+    if style:
+        el["style"] = style
+    return el
+
+
+def _meeting_row_blocks(meeting: dict) -> list:
+    mid = meeting["id"]
+    status = STATUS_LABELS.get(meeting.get("status", ""), meeting.get("status", ""))
+    parts = ", ".join(meeting.get("participants", [])) or "—"
+    section = {
+        "type": "section",
+        "block_id": f"meeting-{mid}",
+        "text": {"type": "mrkdwn",
+                 "text": f"*{meeting.get('title', '(제목 없음)')}*  ·  _{status}_\n참석자: {parts}"},
+    }
+    elements = [
+        _btn("시작", f"{ACTION_PREFIX}start", action_value(mid, "start"), style="primary"),
+        _btn("이어쓰기", f"{ACTION_PREFIX}continue_open", action_value(mid, "continue")),
+        _btn("종료", f"{ACTION_PREFIX}end", action_value(mid, "end"), style="danger"),
+    ]
+    if meeting.get("routing_mode") == "manual":
+        for p in meeting.get("participants", [])[:4]:
+            elements.append(_btn(f"다음: {p}", f"{ACTION_PREFIX}next",
+                                 action_value(mid, "next", profile=p)))
+    return [section, {"type": "actions", "block_id": f"meeting-act-{mid}", "elements": elements[:5]}]
+
+
+def build_meeting_room_blocks(store: dict, channel_id: str) -> tuple:
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": "Hermes Meeting Room"}},
+        {"type": "context", "elements": [{"type": "mrkdwn",
+         "text": "회의 세션은 이 UI로만 제어되며 일반 @멘션 대화와 분리됩니다."}]},
+        {"type": "actions", "elements": [
+            _btn("새 회의 시작", f"{ACTION_PREFIX}new_open", "", style="primary"),
+            _btn("새로고침", f"{ACTION_PREFIX}refresh", ""),
+        ]},
+        {"type": "divider"},
+    ]
+    rows = list_meetings(store, channel_id)
+    if not rows:
+        blocks.append({"type": "context", "elements": [
+            {"type": "mrkdwn", "text": "_아직 회의가 없습니다. `새 회의 시작`을 누르세요._"}]})
+    for m in rows:
+        if len(blocks) + 2 > _MAX_BLOCKS:
+            blocks.append({"type": "context", "elements": [
+                {"type": "mrkdwn", "text": "_표시 한도를 초과한 회의는 생략됨._"}]})
+            break
+        blocks.extend(_meeting_row_blocks(m))
+    return "Hermes Meeting Room", blocks
+
+
+def _option(value: str) -> dict:
+    return {"text": {"type": "plain_text", "text": value}, "value": value}
+
+
+def _select_input(block_id: str, label: str, options: list, initial: str) -> dict:
+    return {
+        "type": "input", "block_id": block_id, "label": {"type": "plain_text", "text": label},
+        "element": {"type": "static_select", "action_id": "v",
+                    "options": [_option(o) for o in options],
+                    "initial_option": _option(initial)},
+    }
+
+
+def new_meeting_modal_view(channel_id: str, user_id: str, participant_names: list) -> dict:
+    if participant_names:
+        participants_element = {
+            "type": "multi_static_select", "action_id": "v",
+            "options": [_option(p) for p in participant_names],
+            "initial_options": [_option(p) for p in participant_names],
+        }
+    else:
+        participants_element = {"type": "plain_text_input", "action_id": "v",
+                                "placeholder": {"type": "plain_text", "text": "쉼표로 구분"}}
+    return {
+        "type": "modal", "callback_id": f"{ACTION_PREFIX}new",
+        "private_metadata": json.dumps({"channel_id": channel_id, "user_id": user_id}),
+        "title": {"type": "plain_text", "text": "새 회의"},
+        "submit": {"type": "plain_text", "text": "생성"},
+        "close": {"type": "plain_text", "text": "취소"},
+        "blocks": [
+            {"type": "input", "block_id": "topic", "label": {"type": "plain_text", "text": "주제·목표"},
+             "element": {"type": "plain_text_input", "action_id": "v"}},
+            {"type": "input", "block_id": "participants",
+             "label": {"type": "plain_text", "text": "참석자"}, "element": participants_element},
+            {"type": "input", "block_id": "turns", "label": {"type": "plain_text", "text": "턴수"},
+             "element": {"type": "plain_text_input", "action_id": "v", "initial_value": "4"}},
+            _select_input("mode", "진행 모드", MODE_OPTIONS, "mixed"),
+            _select_input("routing", "진행 제어", ROUTING_OPTIONS, "auto"),
+            _select_input("voice", "음성 모드", VOICE_OPTIONS, "voice-summary"),
+        ],
+    }
+
+
+def continue_modal_view(meeting_id: str) -> dict:
+    return {
+        "type": "modal", "callback_id": f"{ACTION_PREFIX}continue", "private_metadata": meeting_id,
+        "title": {"type": "plain_text", "text": "이어쓰기"},
+        "submit": {"type": "plain_text", "text": "전송"},
+        "close": {"type": "plain_text", "text": "취소"},
+        "blocks": [{"type": "input", "block_id": "msg",
+                    "label": {"type": "plain_text", "text": "메시지"},
+                    "element": {"type": "plain_text_input", "action_id": "v", "multiline": True}}],
+    }
+
+
+def parse_new_meeting_submission(values: dict) -> dict:
+    def _v(block_id):
+        return values.get(block_id, {}).get("v", {})
+
+    parts_el = _v("participants")
+    if parts_el.get("type") == "multi_static_select":
+        participants = [o["value"] for o in parts_el.get("selected_options", [])]
+    else:
+        raw = parts_el.get("value", "") or ""
+        participants = [p.strip() for p in raw.replace("\n", ",").split(",") if p.strip()]
+    return {
+        "title": _v("topic").get("value", "").strip(),
+        "participants": participants,
+        "turns": _v("turns").get("value", "4").strip() or "4",
+        "mode": (_v("mode").get("selected_option") or {}).get("value", "mixed"),
+        "routing_mode": (_v("routing").get("selected_option") or {}).get("value", "auto"),
+        "voice_mode": (_v("voice").get("selected_option") or {}).get("value", "voice-summary"),
+    }

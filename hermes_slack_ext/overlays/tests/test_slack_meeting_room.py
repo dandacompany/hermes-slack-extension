@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -106,3 +107,70 @@ def test_build_continue_and_next_and_end():
     nxt = mr.build_next_prompt(m, "Researcher")
     assert "Researcher" in nxt
     assert "종료" in mr.build_end_prompt(m) or "finaliz" in mr.build_end_prompt(m).lower()
+
+
+def test_room_blocks_have_header_and_primary_actions(tmp_path, monkeypatch):
+    _store_path(tmp_path, monkeypatch)
+    store = {"version": 1, "meetings": {}, "current": {}}
+    fallback, blocks = mr.build_meeting_room_blocks(store, "C1")
+    assert "Meeting Room" in fallback
+    assert blocks[0]["type"] == "header"
+    actions = [b for b in blocks if b["type"] == "actions"]
+    ids = [e["action_id"] for b in actions for e in b["elements"]]
+    assert f"{mr.ACTION_PREFIX}new_open" in ids
+    assert f"{mr.ACTION_PREFIX}refresh" in ids
+
+
+def test_room_blocks_render_meeting_rows_with_actions(tmp_path, monkeypatch):
+    _store_path(tmp_path, monkeypatch)
+    store = {"version": 1, "meetings": {
+        "mtg-x": {"id": "mtg-x", "channel_id": "C1", "user_id": "U1", "title": "YT",
+                  "participants": ["Researcher"], "status": "setup",
+                  "routing_mode": "manual", "session_thread_id": "meeting:C1:mtg-x"}},
+        "current": {}}
+    _f, blocks = mr.build_meeting_room_blocks(store, "C1")
+    ids = [e["action_id"] for b in blocks if b["type"] == "actions" for e in b["elements"]]
+    assert f"{mr.ACTION_PREFIX}start" in ids
+    assert f"{mr.ACTION_PREFIX}continue_open" in ids
+    assert f"{mr.ACTION_PREFIX}end" in ids
+    assert f"{mr.ACTION_PREFIX}next" in ids
+
+
+def test_new_meeting_modal_uses_multiselect_when_participants_known():
+    view = mr.new_meeting_modal_view("C1", "U1", ["Researcher", "Designer"])
+    assert view["callback_id"] == f"{mr.ACTION_PREFIX}new"
+    assert view["private_metadata"]
+    dump = json.dumps(view)
+    assert "multi_static_select" in dump
+
+
+def test_new_meeting_modal_falls_back_to_text_without_participants():
+    view = mr.new_meeting_modal_view("C1", "U1", [])
+    dump = json.dumps(view)
+    assert "multi_static_select" not in dump
+    assert "plain_text_input" in dump
+
+
+def test_parse_new_meeting_submission_reads_all_fields():
+    state = {
+        "topic": {"v": {"type": "plain_text_input", "value": "YT 기획"}},
+        "participants": {"v": {"type": "multi_static_select",
+                               "selected_options": [{"value": "Researcher"}, {"value": "Designer"}]}},
+        "turns": {"v": {"type": "plain_text_input", "value": "4"}},
+        "mode": {"v": {"type": "static_select", "selected_option": {"value": "mixed"}}},
+        "routing": {"v": {"type": "static_select", "selected_option": {"value": "manual"}}},
+        "voice": {"v": {"type": "static_select", "selected_option": {"value": "voice-summary"}}},
+    }
+    out = mr.parse_new_meeting_submission(state)
+    assert out["title"] == "YT 기획"
+    assert out["participants"] == ["Researcher", "Designer"]
+    assert out["turns"] == "4"
+    assert out["mode"] == "mixed"
+    assert out["routing_mode"] == "manual"
+    assert out["voice_mode"] == "voice-summary"
+
+
+def test_continue_modal_carries_meeting_id():
+    view = mr.continue_modal_view("mtg-x")
+    assert view["callback_id"] == f"{mr.ACTION_PREFIX}continue"
+    assert view["private_metadata"] == "mtg-x"
