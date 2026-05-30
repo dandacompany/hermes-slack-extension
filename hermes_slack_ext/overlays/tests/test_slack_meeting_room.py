@@ -68,3 +68,41 @@ def test_set_status_persists(tmp_path, monkeypatch):
 
 def test_gen_meeting_id_is_stable_for_clock():
     assert mr.gen_meeting_id(1_700_000_000.0).startswith("mtg-")
+
+
+def test_action_value_roundtrip():
+    v = mr.action_value("mtg-x", "start")
+    parsed = mr.parse_action_value(v)
+    assert parsed["meeting_id"] == "mtg-x"
+    assert parsed["action"] == "start"
+
+
+def test_action_value_carries_profile():
+    v = mr.action_value("mtg-x", "next", profile="Researcher")
+    assert mr.parse_action_value(v)["profile"] == "Researcher"
+
+
+def _meeting():
+    return {"id": "mtg-x", "channel_id": "C1", "user_id": "U1", "title": "YT 기획",
+            "participants": ["Researcher", "Designer"], "turns": "4", "mode": "mixed",
+            "routing_mode": "auto", "voice_mode": "voice-summary",
+            "session_thread_id": "meeting:C1:mtg-x", "status": "setup"}
+
+
+def test_build_start_prompt_follows_contract():
+    text = mr.build_start_prompt(_meeting())
+    assert text.startswith("/meeting YT 기획")
+    assert "참석자: Researcher, Designer" in text
+    assert "턴수: 4턴" in text
+    assert "진행: mixed" in text
+    assert "진행 제어: auto" in text
+    assert "음성: voice-summary" in text
+    assert "전용 meeting 세션" in text
+
+
+def test_build_continue_and_next_and_end():
+    m = _meeting()
+    assert "follow up" in mr.build_continue_prompt(m, "follow up")
+    nxt = mr.build_next_prompt(m, "Researcher")
+    assert "Researcher" in nxt
+    assert "종료" in mr.build_end_prompt(m) or "finaliz" in mr.build_end_prompt(m).lower()
