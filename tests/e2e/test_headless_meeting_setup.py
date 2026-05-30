@@ -30,6 +30,9 @@ def test_headless_meeting_setup(tmp_path, monkeypatch):
     monkeypatch.setattr(slack_api, "auth_test", lambda b: {"user_id": "Bx", "team_id": "T"})
     monkeypatch.setattr(slack_api, "conversations_join", lambda b, c: {"ok": True})
 
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir(parents=True, exist_ok=True)
+
     answers = {
         "features": ["meeting"],
         "manifest_out": str(tmp_path / "base.json"),
@@ -61,3 +64,19 @@ def test_headless_meeting_setup(tmp_path, monkeypatch):
         assert "Bmod" in env, f"{pid}.env의 allowed_users에 모더레이터 봇 누락"
     # moderator 스킬 설치
     assert (tmp_path / "skills" / "hermes-meeting" / "SKILL.md").exists()
+
+    # 미팅 Block Kit 런타임 패치 적용 확인
+    patched = (root / "gateway/platforms/slack.py").read_text()
+    assert '@self._app.command("/meeting")' in patched
+    assert "hermes_meeting_new" in patched
+    assert (root / "gateway/platforms/slack_meeting_room.py").exists()
+    # 실 slack.py가 미팅 splice 후에도 py_compile 통과
+    import subprocess as _sp
+    _sp.run([str(REAL_VENV / "bin/python"), "-m", "py_compile",
+             str(root / "gateway/platforms/slack.py"),
+             str(root / "gateway/platforms/slack_meeting_room.py")], check=True)
+    # 참가자 사이드카(HERMES_HOME 아래) — HERMES_HOME 전역 override 시 tmp/home 사용
+    import json as _json
+    sc = tmp_path / "home" / "hermes-slack-ext" / "meeting_participants.json"
+    if sc.exists():
+        assert _json.loads(sc.read_text()) == ["Researcher", "Backend", "Designer"]
