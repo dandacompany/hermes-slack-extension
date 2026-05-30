@@ -15,3 +15,8 @@ class DetectStep(Step):
         version = hermes.detect_version(root)
         ctx.data["hermes_version"] = version
         ctx.data["hermes_supported"] = hermes.is_supported(version)
+        if not hermes.is_supported(version):
+            raise RuntimeError(
+                f"지원하지 않는 Hermes 버전입니다: {version}. "
+                f"지원: {', '.join(hermes.SUPPORTED_VERSIONS)}"
+            )

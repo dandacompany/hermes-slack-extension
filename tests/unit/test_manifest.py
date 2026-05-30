@@ -1,3 +1,5 @@
+import pytest
+
 from hermes_slack_ext.core import manifest as M
 
 
@@ -44,6 +46,17 @@ def test_participant_manifest_has_no_slash_commands():
     assert "slash_commands" not in pm["features"]
     assert pm["display_information"]["name"] == "Researcher"
     assert pm["settings"]["socket_mode_enabled"] is True
+
+
+def test_swap_raises_when_drop_target_absent():
+    base = {
+        "features": {"slash_commands": [
+            {"command": "/keep", "description": "k", "should_escape": False, "url": "u"}
+        ]},
+        "settings": {},
+    }
+    with pytest.raises(ValueError):
+        M.swap_slashes(base, drop=["nonexistent"], add=[{"command": "/board", "description": "b"}])
 
 
 def test_fetch_full_manifest_invokes_cli(monkeypatch, tmp_path):

@@ -32,6 +32,16 @@ def test_detect_rejects_missing_slack_py(tmp_path):
         DetectStep().apply(ctx)
 
 
+def test_detect_rejects_unsupported_version(tmp_path):
+    root = tmp_path / "hermes-agent"
+    (root / "gateway/platforms").mkdir(parents=True)
+    (root / "pyproject.toml").write_text('[project]\nname = "hermes-agent"\nversion = "0.9.0"\n')
+    (root / "gateway/platforms/slack.py").write_text("x\n")
+    ctx = WizardContext(hermes_root=root)
+    with pytest.raises(RuntimeError):
+        DetectStep().apply(ctx)
+
+
 def test_select_features_records_choice(tmp_path):
     ctx = WizardContext(hermes_root=_root(tmp_path))
     DetectStep().apply(ctx)

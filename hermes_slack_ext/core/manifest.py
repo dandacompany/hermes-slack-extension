@@ -44,6 +44,12 @@ def swap_slashes(manifest: dict, drop: list[str], add: list[dict]) -> dict:
     drop_set = {d.lstrip("/") for d in drop}
     kept = [s for s in slashes if s["command"].lstrip("/") not in drop_set]
     existing = {s["command"] for s in kept}
+    removed = len(slashes) - len(kept)
+    if add and removed < len(add):
+        raise ValueError(
+            f"슬래시 예산 위반: 추가 {len(add)}개 대비 제거 {removed}개. "
+            f"drop 대상 {drop} 중 일부가 매니페스트에 없습니다."
+        )
     for entry in add:
         full = {"should_escape": False, "url": url, **entry}
         if full["command"] not in existing:
