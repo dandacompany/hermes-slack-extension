@@ -67,7 +67,17 @@ hermes-ext install \
 - **App-Level Token 발급** — `connections:write` 스코프(`xapp-…`). API로는 만들 수 없어 UI에서 발급.
 - **채널에 봇 초대** — 비공개 채널이거나 자동 초대가 막힌 경우.
 
+대화형 실행 시 마법사가 아래 식별자(비밀 아님)를 묻습니다. 헤드리스(`--answers-file`)는
+같은 키로 미리 제공합니다.
+
+- **회의 채널 ID**(`channel_id`, `Cxxxxxxxx`) — 참가자 봇 자동 초대·배선 대상.
+- **본인 Slack User ID**(`human_user_id`, `Uxxxxxxxx`) — allow-list에 포함.
+- **모더레이터 Bot User ID**(`moderator_bot_user_id`, `Uxxxxxxxx`) — 베이스 Hermes 앱의 봇.
+  이 값이 있어야 모더레이터가 `SLACK_ALLOWED_USERS`에 포함되어 모더레이터→참가자
+  멘션 라우팅이 동작합니다(누락 시 참가자가 모더레이터 멘션을 무시).
+
 > 봇/앱 토큰은 마법사가 절대 출력하지 않으며, 프로필별 `.env`에만 `0600`으로 저장됩니다.
+> `--dry-run`은 실제 Slack 앱을 만들거나 토큰을 기록하지 않고 수행 계획만 보여줍니다.
 
 ## 슬래시 명령 스왑
 
