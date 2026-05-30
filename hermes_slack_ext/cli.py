@@ -19,6 +19,7 @@ from hermes_slack_ext.wizard.steps.slack_config_token import SlackConfigTokenSte
 from hermes_slack_ext.wizard.steps.slack_apps import SlackAppsStep
 from hermes_slack_ext.wizard.steps.moderator_app import ModeratorAppStep
 from hermes_slack_ext.wizard.steps.wireup import WireupStep
+from hermes_slack_ext.wizard.steps.meeting_runtime import MeetingRuntimeStep
 
 app = typer.Typer(
     add_completion=False,
@@ -42,7 +43,7 @@ def _build_steps():
     return [
         DetectStep(), SelectFeaturesStep(), BoardStep(), SlashSwapStep(),
         MeetingProfilesStep(), SlackConfigTokenStep(), SlackAppsStep(),
-        ModeratorAppStep(), WireupStep(),
+        ModeratorAppStep(), WireupStep(), MeetingRuntimeStep(),
     ]
 
 
