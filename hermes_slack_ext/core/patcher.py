@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re as _re_mod
 
 # --- install.py 라인 30-58에서 그대로 포팅 ---
 BOARD_COMMAND_SNIPPET = '''\
@@ -101,4 +102,106 @@ def board_markers_present(text: str) -> bool:
     return all(m in text for m in (
         "_board_action_locks", '@self._app.command("/board")',
         "hermes_board_task_create", 'if name != "board"', "async def send_kanban_board",
+    ))
+
+
+# --- 미팅 splice 스니펫 ---
+
+MEETING_LOCK_SNIPPET = (
+    "        self._meeting_action_locks: Dict[str, float] = {}\n"
+)
+
+MEETING_COMMAND_SNIPPET = '''\
+            @self._app.command("/meeting")
+            async def handle_meeting_command(ack, command):
+                await ack(response_type="ephemeral", text="Opening meeting room...")
+                asyncio.create_task(self._handle_meeting_slash_background(dict(command)))
+
+'''
+
+MEETING_ACTION_SNIPPET = '''\
+            self._app.action(_re.compile(r"^hermes_meeting_"))(self._handle_meeting_action)
+            self._app.view("hermes_meeting_new")(self._handle_meeting_new_view)
+            self._app.view("hermes_meeting_continue")(self._handle_meeting_continue_view)
+'''
+
+_INIT_ANCHOR = (
+    "        self._slash_command_contexts: Dict[Tuple[str, str], Dict[str, Any]] = {}\n"
+)
+_RE_IMPORT_ANCHOR = "            import re as _re\n\n"
+_SOCKET_ANCHOR = "            # Start Socket Mode handler in background\n"
+_CONFIRM_ANCHOR = "    async def _handle_slash_confirm_action"
+_MEETING_METHODS_START = "    async def send_meeting_room"
+
+
+def _apply_slash_exclusion(text: str, name: str) -> str:
+    """generic-slash 목록에서 name을 제외한다. (A) one-liner→`!= name`,
+    (B) board의 `if name != "X"`→`("X","name")` 튜플, (C) 기존 튜플에 추가. 멱등."""
+    one_liner = "            _slash_names = [name for name, _d, _h in slack_native_slashes()]\n"
+    if one_liner in text:
+        repl = (
+            "            _slash_names = [\n"
+            "                name for name, _d, _h in slack_native_slashes()\n"
+            f'                if name != "{name}"\n'
+            "            ]\n"
+        )
+        return text.replace(one_liner, repl, 1)
+    m = _re_mod.search(r'                if name != "([^"]+)"\n', text)
+    if m:
+        other = m.group(1)
+        if other == name:
+            return text
+        new_line = f'                if name not in ("{other}", "{name}")\n'
+        return text[:m.start()] + new_line + text[m.end():]
+    m2 = _re_mod.search(r'if name not in \(([^)]*)\)', text)
+    if m2:
+        existing = set(_re_mod.findall(r'"([^"]+)"', m2.group(1)))
+        if name in existing:
+            return text
+        existing.add(name)
+        new_tuple = ", ".join(f'"{n}"' for n in sorted(existing))
+        return text[:m2.start(1)] + new_tuple + text[m2.end(1):]
+    return text
+
+
+def apply_meeting_patch(text: str, methods_frag: str) -> str:
+    """보드 patch와 동일 구조의 5-splice를 미팅용으로 적용한다. 보드 설치 여부와
+    무관하게 멱등. 마커가 없으면 PatchError."""
+    if "_meeting_action_locks" not in text:
+        if _INIT_ANCHOR not in text:
+            raise PatchError("slack.py __init__ 앵커(_slash_command_contexts)를 찾지 못함")
+        text = text.replace(_INIT_ANCHOR, _INIT_ANCHOR + MEETING_LOCK_SNIPPET, 1)
+
+    if '@self._app.command("/meeting")' not in text:
+        if _RE_IMPORT_ANCHOR not in text:
+            raise PatchError("connect()의 'import re as _re' 앵커를 찾지 못함")
+        text = text.replace(_RE_IMPORT_ANCHOR, _RE_IMPORT_ANCHOR + MEETING_COMMAND_SNIPPET, 1)
+
+    text = _apply_slash_exclusion(text, "meeting")
+
+    if "hermes_meeting_new" not in text:
+        if _SOCKET_ANCHOR not in text:
+            raise PatchError("connect()의 'Start Socket Mode' 앵커를 찾지 못함")
+        text = text.replace(_SOCKET_ANCHOR, MEETING_ACTION_SNIPPET + _SOCKET_ANCHOR, 1)
+
+    methods = methods_frag.rstrip()
+    if _CONFIRM_ANCHOR not in text:
+        raise PatchError("methods 앵커(_handle_slash_confirm_action)를 찾지 못함")
+    if _MEETING_METHODS_START in text:
+        start = text.index(_MEETING_METHODS_START)
+        end = text.index(_CONFIRM_ANCHOR, start)
+        text = text[:start] + methods + "\n\n" + text[end:]
+    else:
+        text = text.replace(_CONFIRM_ANCHOR, methods + "\n\n" + _CONFIRM_ANCHOR, 1)
+
+    _assert_single_bodied_confirm(text)
+    return text
+
+
+def meeting_markers_present(text: str) -> bool:
+    return all(m in text for m in (
+        "_meeting_action_locks",
+        '@self._app.command("/meeting")',
+        "hermes_meeting_new",
+        _MEETING_METHODS_START.strip(),
     ))
