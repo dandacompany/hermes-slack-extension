@@ -1,0 +1,64 @@
+# TTS provider choices for Hermes Slack meeting rooms.
+# Inspect the target Hermes install before presenting final provider names.
+
+edge_default:
+  label: "Edge TTS"
+  description: "Lowest-friction default. Usually no API key required."
+  config:
+    voice:
+      auto_tts: false
+    tts:
+      provider: edge
+
+hermes_builtin_provider:
+  label: "<HERMES_BUILTIN_PROVIDER>"
+  description: "A TTS provider available in the target Hermes install."
+  env:
+    "<OPTIONAL_PROVIDER_API_KEY>": "<VALUE_IF_REQUIRED>"
+  config:
+    voice:
+      auto_tts: false
+    tts:
+      provider: "<HERMES_BUILTIN_PROVIDER>"
+
+typecast_optional:
+  label: "Typecast"
+  description: "Optional Korean voice provider. Requires Typecast support in the target Hermes install or plugin."
+  env:
+    TYPECAST_API_KEY: "<TYPECAST_API_KEY>"
+  config:
+    voice:
+      auto_tts: false
+    tts:
+      provider: typecast
+      providers:
+        typecast:
+          type: command
+          voice: "<TYPECAST_VOICE_ID>"
+          voice_name: "<VOICE_NAME>"
+          output_format: mp3
+          voice_compatible: false
+
+elevenlabs_optional:
+  label: "ElevenLabs"
+  description: "Optional high-quality voice provider. Requires ElevenLabs support in the target Hermes install or plugin."
+  env:
+    ELEVENLABS_API_KEY: "<ELEVENLABS_API_KEY>"
+  config:
+    voice:
+      auto_tts: false
+    tts:
+      provider: elevenlabs
+      providers:
+        elevenlabs:
+          voice: "<ELEVENLABS_VOICE_ID>"
+          voice_name: "<VOICE_NAME>"
+          model: "<ELEVENLABS_MODEL_OR_DEFAULT>"
+          output_format: mp3
+          voice_compatible: false
+
+voice_modes:
+  text-only: "No TTS. Use for first meeting tests."
+  voice-summary: "Only a final speakable summary sentence is read."
+  voice-full: "The substantive turn is read aloud. Keep it short."
+  hybrid: "Moderator chooses which turns are spoken."
