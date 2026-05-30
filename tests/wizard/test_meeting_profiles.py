@@ -31,3 +31,16 @@ def test_default_profiles_have_aligned_names(tmp_path):
     mod = next(p for p in ctx.data["profiles"] if p["base_app"])
     assert mod["profile_id"] == "moderator"
     assert mod["persona_display_name"] == "Moderator"
+
+
+def test_preset_mode_dedupes_colliding_ids(tmp_path):
+    # 같은 프리셋을 두 번 고르면 profile_id 충돌 → _2 접미사로 분리(.env 덮어쓰기 방지).
+    ctx = _ctx(tmp_path, ["meeting"])
+    prompts = ScriptedPrompts({
+        "profile_mode": ["preset"], "profile_count": ["2"],
+        "preset_0": ["researcher"], "preset_1": ["researcher"],
+    })
+    MeetingProfilesStep().prompt(ctx, prompts)
+    ids = [p["profile_id"] for p in ctx.data["profiles"]]
+    assert len(ids) == len(set(ids)), ids
+    assert "researcher" in ids and "researcher_2" in ids

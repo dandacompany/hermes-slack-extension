@@ -51,4 +51,10 @@ def render_moderator_prompt(participant_mentions: list[str]) -> str:
 
 
 def build_allowed_users(human_user_id: str, bot_user_ids: list[str]) -> str:
-    return ",".join([human_user_id, *bot_user_ids])
+    """Comma-joined allow-list. Drops empty ids so a missing human/bot id can't
+    inject a leading/embedded comma (which would mis-parse the allow-list)."""
+    seen: list[str] = []
+    for uid in [human_user_id, *bot_user_ids]:
+        if uid and uid not in seen:
+            seen.append(uid)
+    return ",".join(seen)

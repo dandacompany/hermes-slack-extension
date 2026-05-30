@@ -29,3 +29,10 @@ def test_render_participant_prompt_substitutes_persona():
 def test_build_allowed_users_includes_all_bots():
     val = P.build_allowed_users("Uhuman", ["Bmod", "Bp1", "Bp2"])
     assert val == "Uhuman,Bmod,Bp1,Bp2"
+
+
+def test_build_allowed_users_drops_empty_and_dupes():
+    # 빈 human → leading comma 없이, 중복 봇은 1회만.
+    val = P.build_allowed_users("", ["Bmod", "", "Bp1", "Bmod"])
+    assert val == "Bmod,Bp1"
+    assert not val.startswith(",")

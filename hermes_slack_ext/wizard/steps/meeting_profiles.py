@@ -24,6 +24,20 @@ def _materialize(profile: dict, presets: dict) -> dict:
     return merged
 
 
+def _ensure_unique_ids(profiles: list[dict]) -> list[dict]:
+    """profile_id 충돌 시 _2, _3 접미사로 분리한다. 같은 id가 둘이면 토큰 .env와
+    채널 프롬프트 파일이 서로 덮어써지므로(자격증명 손실) 반드시 유일해야 한다."""
+    counts: dict[str, int] = {}
+    for prof in profiles:
+        pid = prof["profile_id"]
+        if pid in counts:
+            counts[pid] += 1
+            prof["profile_id"] = f"{pid}_{counts[pid]}"
+        else:
+            counts[pid] = 1
+    return profiles
+
+
 class MeetingProfilesStep(Step):
     id = "meeting_profiles"
     title = "회의 프로필 구성"
@@ -39,7 +53,7 @@ class MeetingProfilesStep(Step):
             ["default", "preset", "custom"], default="default",
         )
         if mode == "default":
-            ctx.data["profiles"] = [_materialize(d, presets) for d in defaults]
+            ctx.data["profiles"] = _ensure_unique_ids([_materialize(d, presets) for d in defaults])
             return
         # preset/custom 경로는 프로필 수와 각 프로필을 순차로 묻는다.
         count = int(prompts.text("profile_count", "참가자 수(모더레이터 제외)", default="3"))
@@ -53,4 +67,4 @@ class MeetingProfilesStep(Step):
                     prof[f] = prompts.text(f"{pid}_{f}", f"{pid}.{f}", default=str(prof[f]))
                 prof["profile_id"] = prompts.text(f"{pid}_profile_id", f"{pid} 프로필 id", default=pid)
             profiles.append(prof)
-        ctx.data["profiles"] = profiles
+        ctx.data["profiles"] = _ensure_unique_ids(profiles)
