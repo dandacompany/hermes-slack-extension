@@ -2,8 +2,6 @@ import shutil
 import sys
 from pathlib import Path
 
-import pytest
-
 from hermes_slack_ext.core.hermes import detect_version, is_supported, venv_python
 
 

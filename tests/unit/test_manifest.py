@@ -1,5 +1,3 @@
-import copy
-
 from hermes_slack_ext.core import manifest as M
 
 

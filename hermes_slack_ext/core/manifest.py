@@ -46,7 +46,6 @@ def swap_slashes(manifest: dict, drop: list[str], add: list[dict]) -> dict:
     existing = {s["command"] for s in kept}
     for entry in add:
         full = {"should_escape": False, "url": url, **entry}
-        full.setdefault("url", url)
         if full["command"] not in existing:
             kept.append(full)
             existing.add(full["command"])

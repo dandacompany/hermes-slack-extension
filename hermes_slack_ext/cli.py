@@ -49,6 +49,9 @@ def install(
     root = Path(hermes_root).expanduser().resolve()
     ctx = WizardContext(hermes_root=root, non_interactive=non_interactive, dry_run=dry_run)
 
+    if non_interactive and not answers_file:
+        raise typer.BadParameter("--non-interactive 는 --answers-file 과 함께 사용하세요.")
+
     if answers_file:
         answers = yaml.safe_load(Path(answers_file).read_text()) or {}
         # 비-프롬프트 값은 ctx.data로 직접 주입
@@ -67,7 +70,10 @@ def install(
     ctx.data.setdefault("backup_root", str(Path(state_dir) / "backups" / "board"))
     state = WizardState(Path(state_dir) / "state.json").load()
     Wizard(_build_steps(), prompts, state).run(ctx)
-    typer.echo("설치 완료. 게이트웨이를 재시작하세요: hermes gateway restart")
+    if dry_run:
+        typer.echo("드라이런 완료 — 실제 변경 없음.")
+    else:
+        typer.echo("설치 완료. 게이트웨이를 재시작하세요: hermes gateway restart")
 
 
 if __name__ == "__main__":
