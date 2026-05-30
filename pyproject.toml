@@ -22,3 +22,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["hermes_slack_ext*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
