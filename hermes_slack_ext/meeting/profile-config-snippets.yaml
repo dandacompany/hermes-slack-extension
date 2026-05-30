@@ -1,0 +1,49 @@
+# Merge these snippets into each Hermes profile config.yaml.
+
+moderator_profile:
+  slack:
+    dm_only: false
+    require_mention: true
+    strict_mention: true
+    unauthorized_dm_behavior: "pair"
+    allow_bots: "mentions"
+    free_response_channels:
+      - "<MEETING_CHANNEL_ID>"
+    channel_prompts:
+      "<MEETING_CHANNEL_ID>": |
+        <PASTE_MODERATOR_CHANNEL_PROMPT>
+  platforms:
+    slack:
+      reply_in_thread: false
+  voice:
+    auto_tts: false
+  tts:
+    provider: edge
+
+participant_profile:
+  slack:
+    dm_only: false
+    require_mention: true
+    strict_mention: true
+    unauthorized_dm_behavior: "ignore"
+    allow_bots: "mentions"
+    free_response_channels:
+      - "<MEETING_CHANNEL_ID>"
+    channel_prompts:
+      "<MEETING_CHANNEL_ID>": |
+        <PASTE_PARTICIPANT_CHANNEL_PROMPT>
+  platforms:
+    slack:
+      reply_in_thread: false
+  voice:
+    auto_tts: false
+  tts:
+    provider: edge
+
+env_file_template: |
+  SLACK_BOT_TOKEN=xoxb-...
+  SLACK_APP_TOKEN=xapp-...
+  # Include the human operator and every meeting bot user id so moderator-to-participant bot mentions work.
+  SLACK_ALLOWED_USERS=<HUMAN_USER_ID>,<MODERATOR_BOT_USER_ID>,<PARTICIPANT_BOT_USER_ID_1>,<PARTICIPANT_BOT_USER_ID_2>
+  SLACK_ALLOW_BOTS=mentions
+  SLACK_HOME_CHANNEL=<OPTIONAL_HOME_CHANNEL_ID>

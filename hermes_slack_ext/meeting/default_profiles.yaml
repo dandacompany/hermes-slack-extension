@@ -1,0 +1,28 @@
+# 기본 회의 프로필 세트. moderator 1 + 참가자 3.
+# 각 항목의 preset은 business-persona-presets.yaml의 id를 참조한다.
+# 주: "designer"는 카탈로그에 없어 visual_designer로, "developer"는 backend_engineer로 매핑함.
+default_profiles:
+  - {
+      profile_id: moderator,
+      preset: moderator,
+      role: Moderator,
+      base_app: true,
+    }
+  - {
+      profile_id: researcher,
+      preset: researcher,
+      role: Researcher,
+      base_app: false,
+    }
+  - {
+      profile_id: developer,
+      preset: backend_engineer,
+      role: Developer,
+      base_app: false,
+    }
+  - {
+      profile_id: designer,
+      preset: visual_designer,
+      role: Designer,
+      base_app: false,
+    }

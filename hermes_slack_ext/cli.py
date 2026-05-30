@@ -14,6 +14,11 @@ from hermes_slack_ext.wizard.steps.detect import DetectStep
 from hermes_slack_ext.wizard.steps.select_features import SelectFeaturesStep
 from hermes_slack_ext.wizard.steps.board import BoardStep
 from hermes_slack_ext.wizard.steps.slash_swap import SlashSwapStep
+from hermes_slack_ext.wizard.steps.meeting_profiles import MeetingProfilesStep
+from hermes_slack_ext.wizard.steps.slack_config_token import SlackConfigTokenStep
+from hermes_slack_ext.wizard.steps.slack_apps import SlackAppsStep
+from hermes_slack_ext.wizard.steps.moderator_app import ModeratorAppStep
+from hermes_slack_ext.wizard.steps.wireup import WireupStep
 
 app = typer.Typer(
     add_completion=False,
@@ -34,7 +39,11 @@ def version() -> None:
 
 
 def _build_steps():
-    return [DetectStep(), SelectFeaturesStep(), BoardStep(), SlashSwapStep()]
+    return [
+        DetectStep(), SelectFeaturesStep(), BoardStep(), SlashSwapStep(),
+        MeetingProfilesStep(), SlackConfigTokenStep(), SlackAppsStep(),
+        ModeratorAppStep(), WireupStep(),
+    ]
 
 
 @app.command()
@@ -55,7 +64,9 @@ def install(
     if answers_file:
         answers = yaml.safe_load(Path(answers_file).read_text()) or {}
         # 비-프롬프트 값은 ctx.data로 직접 주입
-        for k in ("manifest_out", "moderator_name", "backup_root"):
+        for k in ("manifest_out", "moderator_name", "backup_root", "base_app_id",
+                  "channel_id", "human_user_id", "moderator_bot_user_id",
+                  "profile_env_dir", "skills_dir", "staging_dir"):
             if k in answers:
                 ctx.data[k] = answers[k]
         # 프롬프트 키는 ScriptedPrompts로. features는 checkbox가 리스트 전체를
@@ -63,6 +74,14 @@ def install(
         scripted: dict = {}
         if "features" in answers:
             scripted["features"] = [answers["features"]]
+        # 미팅 프롬프트 키(스칼라) — ScriptedPrompts가 스칼라를 [v]로 감싸므로 그대로 전달
+        for k in ("profile_mode", "profile_count", "config_token", "refresh_token"):
+            if k in answers:
+                scripted[k] = answers[k]
+        # 참가자 토큰/프리셋 키(<pid>_bot_token / <pid>_app_token / preset_N / <pid>_<field>)
+        for k, v in answers.items():
+            if k.endswith(("_bot_token", "_app_token")) or k.startswith("preset_"):
+                scripted[k] = v
         prompts: Prompts = ScriptedPrompts(scripted)
     else:
         prompts = Prompts()
