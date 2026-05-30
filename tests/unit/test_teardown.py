@@ -77,10 +77,24 @@ def test_cleanup_artifacts(tmp_path):
     (home / "hermes-slack-ext").mkdir(parents=True)
     (home / "hermes-slack-ext/meeting_sessions.json").write_text("{}")
     (home / "hermes-slack-ext/meeting_participants.json").write_text("[]")
-    skills = tmp_path / "skills"; (skills / "hermes-meeting").mkdir(parents=True)
+    # 실제 레이아웃: skills_dir는 HERMES_HOME 하위(~/.hermes/skills).
+    skills = home / "skills"; (skills / "hermes-meeting").mkdir(parents=True)
     (skills / "hermes-meeting/SKILL.md").write_text("x")
     record = {"skills_dir": str(skills)}
     removed = T.cleanup_artifacts(record, home, dry_run=False)
     assert any("meeting_sessions.json" in r for r in removed)
     assert not (home / "hermes-slack-ext/meeting_sessions.json").exists()
     assert not (skills / "hermes-meeting").exists()
+
+
+def test_cleanup_artifacts_skips_out_of_bounds(tmp_path):
+    # I1: record가 hermes_home 밖 디렉터리를 지목해도 rmtree하지 않는다(데이터 손실 방지).
+    home = tmp_path / "home"; (home / "hermes-slack-ext").mkdir(parents=True)
+    outside = tmp_path / "precious"; (outside / "hermes-meeting").mkdir(parents=True)
+    (outside / "hermes-meeting/keep.txt").write_text("KEEP")
+    record = {"skills_dir": str(outside), "staging_dir": str(tmp_path / "precious2")}
+    (tmp_path / "precious2").mkdir()
+    removed = T.cleanup_artifacts(record, home, dry_run=False)
+    assert (outside / "hermes-meeting").exists()       # 삭제 안 됨
+    assert (tmp_path / "precious2").exists()
+    assert any("skipped" in r for r in removed)          # 건너뜀 표시

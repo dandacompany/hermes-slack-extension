@@ -22,14 +22,19 @@ class BoardStep(Step):
         slack_py = hermes.slack_py_path(root)
         backup_root = Path(ctx.data["backup_root"])
 
-        backups.backup_files(root, [
-            "gateway/platforms/slack.py",
+        text = slack_py.read_text()
+        rels = [
             "gateway/platforms/slack_kanban_board.py",
             "tests/test_slack_kanban_board.py",
-        ], backup_root)
+        ]
+        # slack.py는 *패치 전(클린)* 상태일 때만 백업한다. 이미 패치된 파일을 백업하면
+        # uninstall이 패치 버전을 "복원"해 원복이 무력화된다(클린 백업 보존이 불변식).
+        if not (patcher.board_markers_present(text) or patcher.meeting_markers_present(text)):
+            rels.insert(0, "gateway/platforms/slack.py")
+        backups.backup_files(root, rels, backup_root)
 
         frag = (_OVERLAY / "gateway/platforms/slack_board_methods.pyfrag").read_text()
-        patched = patcher.apply_board_patch(slack_py.read_text(), frag)
+        patched = patcher.apply_board_patch(text, frag)
         slack_py.write_text(patched)
 
         shutil.copy2(_OVERLAY / "gateway/platforms/slack_kanban_board.py",

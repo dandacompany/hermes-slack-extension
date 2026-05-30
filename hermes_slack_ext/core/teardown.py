@@ -4,7 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
-from hermes_slack_ext.core import backups, hermes, patcher
+from hermes_slack_ext.core import hermes, patcher
 
 # install이 추가하는 오버레이 파일(원복 시 삭제 — 백업에 없으므로 별도 제거).
 OVERLAY_MODULES = [
@@ -52,15 +52,21 @@ def diagnose(hermes_root, state_dir) -> dict:
     }
 
 
+_SLACK_REL = "gateway/platforms/slack.py"
+
+
 def restore_slack_py(hermes_root, backup_root, dry_run: bool = False) -> list:
-    """백업(패치 전 원본)을 복원해 slack.py를 언패치한다. 복원/예정 rel 목록 반환."""
-    backup_root = Path(backup_root)
-    if not (backup_root / "gateway/platforms/slack.py").exists():
+    """백업의 *패치 전 원본 slack.py만* 복원해 언패치한다(오버레이는 remove_overlays가
+    별도 삭제하므로 백업에서 되살리지 않는다 — 재생성→재삭제 방지). 복원/예정 rel 반환."""
+    src = Path(backup_root) / _SLACK_REL
+    if not src.exists():
         return []
     if dry_run:
-        return [str(p.relative_to(backup_root))
-                for p in backup_root.rglob("*") if p.is_file()]
-    return backups.restore_backup(hermes_root, backup_root)
+        return [_SLACK_REL]
+    dest = Path(hermes_root) / _SLACK_REL
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dest)
+    return [_SLACK_REL]
 
 
 def remove_overlays(hermes_root, dry_run: bool = False) -> list:
@@ -76,9 +82,22 @@ def remove_overlays(hermes_root, dry_run: bool = False) -> list:
     return removed
 
 
+def _within(child: Path, root: Path) -> bool:
+    """child가 root 하위(또는 root 자신)인지. 심볼릭/`..` 회피 위해 resolve 후 비교."""
+    try:
+        child.resolve().relative_to(root.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
 def cleanup_artifacts(record: dict, hermes_home, dry_run: bool = False) -> list:
     """미팅 사이드카·세션스토어·베이스 매니페스트·모더레이터 스킬·스테이징 정리.
-    프로필 .env(토큰 보관)는 건드리지 않는다 — 호출부가 별도 확인 후 처리."""
+    프로필 .env(토큰 보관)는 건드리지 않는다 — 호출부가 별도 확인 후 처리.
+
+    파괴적 명령이므로, record에서 온 디렉터리(skills_dir·staging_dir)는 hermes_home
+    하위로 resolve되는 경우에만 삭제한다. 손상/변조된 state가 임의 경로를 지목해도
+    hermes_home 밖이면 건너뛰고 'skipped:' 로 표시한다(임의 경로 rmtree 방지)."""
     home = Path(hermes_home)
     targets = [
         home / "hermes-slack-ext" / "meeting_participants.json",
@@ -91,11 +110,15 @@ def cleanup_artifacts(record: dict, hermes_home, dry_run: bool = False) -> list:
         targets.append(Path(record["staging_dir"]))
     removed = []
     for t in targets:
-        if t.exists():
-            removed.append(str(t))
-            if not dry_run:
-                if t.is_dir():
-                    shutil.rmtree(t)
-                else:
-                    t.unlink()
+        if not t.exists():
+            continue
+        if not _within(t, home):
+            removed.append(f"skipped(밖): {t}")  # hermes_home 밖 — 안전상 삭제 안 함
+            continue
+        removed.append(str(t))
+        if not dry_run:
+            if t.is_dir():
+                shutil.rmtree(t)
+            else:
+                t.unlink()
     return removed
