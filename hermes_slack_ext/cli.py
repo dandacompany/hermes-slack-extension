@@ -186,5 +186,31 @@ def uninstall(
     typer.echo("원복 완료. 게이트웨이를 재시작하세요: hermes gateway restart")
 
 
+@app.command()
+def doctor(
+    hermes_root: str = typer.Option(str(Path.home() / ".hermes/hermes-agent"), "--hermes-root"),
+    state_dir: str = typer.Option(str(Path.home() / ".hermes/hermes-slack-ext"), "--state-dir"),
+) -> None:
+    """설치 상태 진단(패치 적용·오버레이·백업·기록)."""
+    root = Path(hermes_root).expanduser().resolve()
+    d = teardown.diagnose(root, state_dir)
+
+    def _mark(b: bool) -> str:
+        return "✓" if b else "✗"
+
+    typer.echo(f"Hermes: {d['hermes_root']} (version: {d['version'] or '미상'})")
+    typer.echo(f"  slack.py present : {_mark(d['slack_py_exists'])}")
+    typer.echo(f"  board patched    : {_mark(d['board_patched'])}")
+    typer.echo(f"  meeting patched  : {_mark(d['meeting_patched'])}")
+    typer.echo(f"  overlays         : {d['overlays_present'] or '없음'}")
+    typer.echo(f"  backup available : {_mark(d['backup_present'])} @ {d['backup_root']}")
+    typer.echo(f"  install record   : {_mark(d['has_record'])}"
+               f" (features={d['features']}, dropped={d['slash_dropped']})")
+    typer.echo(f"  created apps     : {len(d['created_app_ids'])}개")
+    if not d["has_record"] and (d["board_patched"] or d["meeting_patched"]):
+        typer.echo("  ⚠ 패치는 적용됐으나 install record가 없습니다 — "
+                   "uninstall은 백업/마커 기반으로만 동작(생성 앱 자동삭제 불가).")
+
+
 if __name__ == "__main__":
     app()
