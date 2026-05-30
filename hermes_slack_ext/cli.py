@@ -47,6 +47,26 @@ def _build_steps():
     ]
 
 
+# 원복(uninstall)용 메타. 시크릿(토큰) 절대 미포함.
+_RECORD_KEYS = (
+    "features", "created_app_ids", "base_app_id", "slash_dropped",
+    "backup_root", "profile_env_dir", "skills_dir", "staging_dir",
+)
+
+
+def _record_install(state: WizardState, ctx: WizardContext) -> None:
+    record = dict(state.data.get("install_record", {}))
+    for key in _RECORD_KEYS:
+        val = ctx.data.get(key)
+        # 재개 실행에서 빈 값이 기존 비어있지 않은 기록을 덮어쓰지 않도록 merge.
+        if val in (None, [], "", {}) and record.get(key) not in (None, [], "", {}):
+            continue
+        if val is not None:
+            record[key] = val
+    state.data["install_record"] = record
+    state.save()
+
+
 @app.command()
 def install(
     hermes_root: str = typer.Option(str(Path.home() / ".hermes/hermes-agent"), "--hermes-root"),
@@ -90,6 +110,8 @@ def install(
     ctx.data.setdefault("backup_root", str(Path(state_dir) / "backups" / "board"))
     state = WizardState(Path(state_dir) / "state.json").load()
     Wizard(_build_steps(), prompts, state).run(ctx)
+    if not dry_run:
+        _record_install(state, ctx)
     if dry_run:
         typer.echo("드라이런 완료 — 실제 변경 없음.")
     else:
