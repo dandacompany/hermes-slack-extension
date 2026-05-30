@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -8,7 +9,9 @@ _API = "https://slack.com/api/"
 
 
 class SlackAPIError(RuntimeError):
-    """Raised when a Slack API response has ok=false."""
+    """Raised when a Slack API call fails — either ok=false or an HTTP/network
+    error. Every failure mode funnels through this one type so callers can
+    guard with a single ``except SlackAPIError``."""
 
     def __init__(self, method: str, error: str, response: dict | None = None):
         super().__init__(f"{method} failed: {error}")
@@ -23,8 +26,21 @@ def _post(method: str, params: dict) -> dict:
         _API + method, data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    with urllib.request.urlopen(req) as resp:
-        body = json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req) as resp:
+            raw = resp.read().decode()
+    except urllib.error.HTTPError as exc:
+        # Non-2xx (429 rate limit, 5xx, ...) — surface as SlackAPIError, not a
+        # bare HTTPError that bypasses callers' SlackAPIError guards.
+        body: dict = {}
+        try:
+            body = json.loads(exc.read().decode())
+        except Exception:
+            pass
+        raise SlackAPIError(method, body.get("error") or f"http_{exc.code}", body) from exc
+    except urllib.error.URLError as exc:
+        raise SlackAPIError(method, f"network_error: {exc.reason}") from exc
+    body = json.loads(raw)
     if not body.get("ok"):
         raise SlackAPIError(method, body.get("error", "unknown"), body)
     return body
