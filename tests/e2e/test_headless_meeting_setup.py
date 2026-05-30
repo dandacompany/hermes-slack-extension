@@ -24,6 +24,7 @@ def test_headless_meeting_setup(tmp_path, monkeypatch):
     shutil.copy(REAL / "pyproject.toml", root / "pyproject.toml")
 
     # Slack API 목
+    monkeypatch.setattr(slack_api, "rotate_tokens", lambda r: {"token": "xoxe-fresh", "refresh_token": "xoxe-r2"})
     monkeypatch.setattr(slack_api, "create_app", lambda t, m: {"app_id": "A_p"})
     monkeypatch.setattr(slack_api, "update_app", lambda t, a, m: {"ok": True})
     monkeypatch.setattr(slack_api, "auth_test", lambda b: {"user_id": "Bx", "team_id": "T"})
