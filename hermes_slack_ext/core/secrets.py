@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 
 def write_env(env_path: Path, kv: dict[str, str]) -> None:
-    """Merge kv into a dotenv file (creating it), set mode 0600. Existing keys
-    are overwritten in place; other lines preserved. Never prints values."""
+    """Merge kv into a dotenv file (creating it) with mode 0600 from creation.
+
+    Existing keys are overwritten in place; other lines preserved. Never prints
+    values. The file is written atomically via a sibling temp file created at
+    mode 0600 and replaced into place, so the secret is never exposed through a
+    world-readable window (no write-then-chmod race)."""
     env_path = Path(env_path)
-    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lines: list[str] = []
     if env_path.exists():
         lines = env_path.read_text(encoding="utf-8").splitlines()
@@ -25,8 +30,21 @@ def write_env(env_path: Path, kv: dict[str, str]) -> None:
     for k, v in kv.items():
         if k not in seen:
             out.append(f"{k}={v}")
-    env_path.write_text("\n".join(out) + "\n", encoding="utf-8")
-    os.chmod(env_path, 0o600)
+    payload = "\n".join(out) + "\n"
+    # Atomic write: mkstemp creates the temp file at mode 0600, so the token is
+    # restrictive from the first byte. os.replace then swaps it in atomically.
+    fd, tmp = tempfile.mkstemp(prefix=".env.", dir=str(env_path.parent))
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+        os.replace(tmp, env_path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def mask(token: str) -> str:
