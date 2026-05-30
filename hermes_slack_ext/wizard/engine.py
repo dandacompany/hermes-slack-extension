@@ -55,9 +55,10 @@ class Wizard:
             if not step.should_run(ctx):
                 continue
             step.prompt(ctx, self.prompts)
-            if not ctx.dry_run:
-                step.apply(ctx)
-                step.verify(ctx)
+            if ctx.dry_run:
+                continue
+            step.apply(ctx)
+            step.verify(ctx)
             self.state.mark_done(step.id)
             self.state.save()
         return ctx

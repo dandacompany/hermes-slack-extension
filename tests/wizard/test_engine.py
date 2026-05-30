@@ -40,6 +40,15 @@ def test_wizard_runs_steps_and_persists(tmp_path):
     assert not state.is_done("skipped")
 
 
+def test_dry_run_does_not_persist_or_apply(tmp_path):
+    ctx = WizardContext(hermes_root=tmp_path, dry_run=True)
+    state = WizardState(tmp_path / "state.json")
+    Wizard([RecordStep()], ScriptedPrompts({"pick": ["a"]}), state).run(ctx)
+    assert "applied" not in ctx.data          # apply skipped
+    assert not state.is_done("record")        # not marked done
+    assert not (tmp_path / "state.json").exists()  # nothing persisted
+
+
 def test_completed_steps_are_skipped_on_resume(tmp_path):
     state = WizardState(tmp_path / "state.json")
     state.mark_done("record")
