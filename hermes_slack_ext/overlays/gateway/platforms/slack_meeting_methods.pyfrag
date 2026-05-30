@@ -1,0 +1,161 @@
+    async def send_meeting_room(self, event) -> str:
+        from gateway.platforms.slack_meeting_room import build_meeting_room_blocks, load_store
+        channel_id = event.source.chat_id
+        store = load_store()
+        fallback, blocks = build_meeting_room_blocks(store, channel_id)
+        try:
+            await self._app.client.chat_postEphemeral(
+                channel=channel_id, user=event.source.user_id, text=fallback, blocks=blocks)
+        except Exception:
+            await self._app.client.chat_postMessage(channel=channel_id, text=fallback, blocks=blocks)
+        return ""
+
+    async def _handle_meeting_slash_background(self, command: dict) -> None:
+        try:
+            source = self.build_source(
+                chat_id=command.get("channel_id", ""),
+                chat_type="group",
+                user_id=command.get("user_id", ""),
+            )
+            event = MessageEvent(text="/meeting", message_type=MessageType.COMMAND,
+                                 source=source, raw_message=command)
+            await self.send_meeting_room(event)
+        except Exception as exc:  # pragma: no cover - 런타임 방어
+            logger.warning("[Slack] meeting room render 실패: %s", exc)
+
+    def _meeting_action_lock_key(self, channel_id: str, msg_ts: str) -> str:
+        return f"{channel_id}:{msg_ts}"
+
+    def _try_acquire_meeting_action_lock(self, key: str) -> bool:
+        import time as _t
+        now = _t.monotonic()
+        exp = self._meeting_action_locks.get(key, 0.0)
+        if exp > now:
+            return False
+        self._meeting_action_locks[key] = now + 8.0
+        return True
+
+    async def _dispatch_meeting_prompt(self, meeting: dict, text: str) -> None:
+        source = self.build_source(
+            chat_id=meeting["channel_id"],
+            chat_type="group",
+            user_id=meeting["user_id"],
+            thread_id=meeting["session_thread_id"],
+        )
+        event = MessageEvent(
+            text=text,
+            message_type=MessageType.COMMAND if text.startswith("/") else MessageType.TEXT,
+            source=source,
+            raw_message={},
+        )
+        await self.handle_message(event)
+
+    async def _meeting_participant_names(self) -> list:
+        import json as _json
+        import os as _os
+        from pathlib import Path as _Path
+        p = _Path(_os.environ.get("HERMES_HOME", str(_Path.home() / ".hermes"))) \
+            / "hermes-slack-ext" / "meeting_participants.json"
+        try:
+            data = _json.loads(p.read_text(encoding="utf-8"))
+            return [str(x) for x in data] if isinstance(data, list) else []
+        except Exception:
+            return []
+
+    async def _refresh_meeting_room(self, body) -> None:
+        from gateway.platforms.slack_meeting_room import build_meeting_room_blocks, load_store
+        channel_id = (body.get("channel") or {}).get("id") or (body.get("container") or {}).get("channel_id", "")
+        msg_ts = (body.get("container") or {}).get("message_ts", "")
+        store = load_store()
+        fallback, blocks = build_meeting_room_blocks(store, channel_id)
+        if msg_ts:
+            try:
+                await self._app.client.chat_update(channel=channel_id, ts=msg_ts, text=fallback, blocks=blocks)
+            except Exception:
+                pass
+
+    async def _handle_meeting_action(self, ack, body, action) -> None:
+        await ack()
+        from gateway.platforms.slack_meeting_room import (
+            parse_action_value, get_meeting, set_status, save_store, load_store,
+            new_meeting_modal_view, continue_modal_view, build_start_prompt,
+            build_next_prompt, build_end_prompt,
+        )
+        action_id = action.get("action_id", "")
+        trigger_id = body.get("trigger_id", "")
+        channel_id = (body.get("channel") or {}).get("id", "")
+        user_id = (body.get("user") or {}).get("id", "")
+
+        if action_id == "hermes_meeting_new_open":
+            names = await self._meeting_participant_names()
+            try:
+                await self._app.client.views_open(
+                    trigger_id=trigger_id, view=new_meeting_modal_view(channel_id, user_id, names))
+            except Exception:
+                pass
+            return
+        if action_id == "hermes_meeting_refresh":
+            await self._refresh_meeting_room(body)
+            return
+
+        data = parse_action_value(action.get("value", ""))
+        meeting_id = data.get("meeting_id", "")
+        store = load_store()
+        meeting = get_meeting(store, meeting_id)
+        if not meeting:
+            return
+        kind = data.get("action", "")
+        if kind == "continue":
+            try:
+                await self._app.client.views_open(trigger_id=trigger_id, view=continue_modal_view(meeting_id))
+            except Exception:
+                pass
+            return
+        if kind == "start":
+            set_status(store, meeting_id, "active"); save_store(store)
+            await self._dispatch_meeting_prompt(meeting, build_start_prompt(meeting))
+            await self._refresh_meeting_room(body)
+            return
+        if kind == "next":
+            await self._dispatch_meeting_prompt(meeting, build_next_prompt(meeting, data.get("profile", "")))
+            return
+        if kind == "end":
+            await self._dispatch_meeting_prompt(meeting, build_end_prompt(meeting))
+            set_status(store, meeting_id, "ended"); save_store(store)
+            await self._refresh_meeting_room(body)
+            return
+
+    async def _handle_meeting_new_view(self, ack, body, view) -> None:
+        await ack()
+        import json as _json
+        import time as _time
+        from gateway.platforms.slack_meeting_room import (
+            load_store, save_store, create_meeting, gen_meeting_id,
+            parse_new_meeting_submission, build_start_prompt,
+        )
+        meta = _json.loads(view.get("private_metadata") or "{}")
+        fields = parse_new_meeting_submission(view.get("state", {}).get("values", {}))
+        store = load_store()
+        mid = gen_meeting_id(_time.time())
+        mid, store = create_meeting(
+            store, channel_id=meta.get("channel_id", ""), user_id=meta.get("user_id", ""),
+            title=fields["title"], participants=fields["participants"], turns=fields["turns"],
+            mode=fields["mode"], routing_mode=fields["routing_mode"],
+            voice_mode=fields["voice_mode"], meeting_id=mid)
+        meeting = store["meetings"][mid]
+        meeting["status"] = "active"
+        save_store(store)
+        await self._dispatch_meeting_prompt(meeting, build_start_prompt(meeting))
+
+    async def _handle_meeting_continue_view(self, ack, body, view) -> None:
+        await ack()
+        from gateway.platforms.slack_meeting_room import (
+            load_store, get_meeting, build_continue_prompt,
+        )
+        meeting_id = view.get("private_metadata", "")
+        values = view.get("state", {}).get("values", {})
+        text = (values.get("msg", {}).get("v", {}) or {}).get("value", "").strip()
+        store = load_store()
+        meeting = get_meeting(store, meeting_id)
+        if meeting and text:
+            await self._dispatch_meeting_prompt(meeting, build_continue_prompt(meeting, text))
