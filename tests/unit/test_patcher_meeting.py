@@ -55,8 +55,25 @@ def test_board_then_meeting_excludes_both_slashes():
 
 
 def test_meeting_then_board_also_composes():
+    import re
     meeting = P.apply_meeting_patch(_SKELETON, _MEETING_FRAG)
     both = P.apply_board_patch(meeting, _BOARD_FRAG)
     assert '@self._app.command("/board")' in both
     assert '@self._app.command("/meeting")' in both
     assert "send_kanban_board" in both and "send_meeting_room" in both
+    # 두 슬래시 모두 generic catch-all에서 제외돼야 한다(순서 무관 합성).
+    # 그렇지 않으면 /board가 generic+전용으로 이중 디스패치된다.
+    m = re.search(r'if name not in \(([^)]*)\)', both)
+    assert m, "generic-slash 제외가 튜플 형태가 아님 — board가 제외되지 않음"
+    names = set(re.findall(r'"([^"]+)"', m.group(1)))
+    assert {"board", "meeting"} <= names, f"제외 집합에 board·meeting 누락: {names}"
+
+
+def test_board_then_meeting_exclusion_is_tuple_of_both():
+    import re
+    board = P.apply_board_patch(_SKELETON, _BOARD_FRAG)
+    both = P.apply_meeting_patch(board, _MEETING_FRAG)
+    m = re.search(r'if name not in \(([^)]*)\)', both)
+    assert m
+    names = set(re.findall(r'"([^"]+)"', m.group(1)))
+    assert {"board", "meeting"} <= names

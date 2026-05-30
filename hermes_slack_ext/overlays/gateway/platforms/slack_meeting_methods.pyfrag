@@ -4,10 +4,10 @@
         store = load_store()
         fallback, blocks = build_meeting_room_blocks(store, channel_id)
         try:
-            await self._app.client.chat_postEphemeral(
+            await self._get_client(channel_id).chat_postEphemeral(
                 channel=channel_id, user=event.source.user_id, text=fallback, blocks=blocks)
         except Exception:
-            await self._app.client.chat_postMessage(channel=channel_id, text=fallback, blocks=blocks)
+            await self._get_client(channel_id).chat_postMessage(channel=channel_id, text=fallback, blocks=blocks)
         return ""
 
     async def _handle_meeting_slash_background(self, command: dict) -> None:
@@ -70,7 +70,7 @@
         fallback, blocks = build_meeting_room_blocks(store, channel_id)
         if msg_ts:
             try:
-                await self._app.client.chat_update(channel=channel_id, ts=msg_ts, text=fallback, blocks=blocks)
+                await self._get_client(channel_id).chat_update(channel=channel_id, ts=msg_ts, text=fallback, blocks=blocks)
             except Exception:
                 pass
 
@@ -89,7 +89,7 @@
         if action_id == "hermes_meeting_new_open":
             names = await self._meeting_participant_names()
             try:
-                await self._app.client.views_open(
+                await self._get_client(channel_id).views_open(
                     trigger_id=trigger_id, view=new_meeting_modal_view(channel_id, user_id, names))
             except Exception:
                 pass
@@ -107,9 +107,15 @@
         kind = data.get("action", "")
         if kind == "continue":
             try:
-                await self._app.client.views_open(trigger_id=trigger_id, view=continue_modal_view(meeting_id))
+                await self._get_client(channel_id).views_open(trigger_id=trigger_id, view=continue_modal_view(meeting_id))
             except Exception:
                 pass
+            return
+        # 상태 변경 + 프롬프트 주입(LLM 턴 소비) 액션은 더블클릭 중복을 막는다.
+        # (보드 _handle_board_action과 동일 패턴; 락은 8초 후 자동 만료.)
+        msg_ts = (body.get("container") or {}).get("message_ts", "")
+        if not self._try_acquire_meeting_action_lock(
+                self._meeting_action_lock_key(channel_id, msg_ts)):
             return
         if kind == "start":
             set_status(store, meeting_id, "active"); save_store(store)

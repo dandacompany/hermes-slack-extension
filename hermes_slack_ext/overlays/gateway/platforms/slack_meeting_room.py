@@ -182,16 +182,21 @@ def _meeting_row_blocks(meeting: dict) -> list:
         "text": {"type": "mrkdwn",
                  "text": f"*{meeting.get('title', '(제목 없음)')}*  ·  _{status}_\n참석자: {parts}"},
     }
-    elements = [
+    base = [
         _btn("시작", f"{ACTION_PREFIX}start", action_value(mid, "start"), style="primary"),
         _btn("이어쓰기", f"{ACTION_PREFIX}continue_open", action_value(mid, "continue")),
         _btn("종료", f"{ACTION_PREFIX}end", action_value(mid, "end"), style="danger"),
     ]
+    blocks = [section, {"type": "actions", "block_id": f"meeting-act-{mid}", "elements": base}]
+    # manual 라우팅: 모든 참가자에 next 버튼(별도 actions 블록 — Slack은 블록당 25개 허용).
     if meeting.get("routing_mode") == "manual":
-        for p in meeting.get("participants", [])[:4]:
-            elements.append(_btn(f"다음: {p}", f"{ACTION_PREFIX}next",
-                                 action_value(mid, "next", profile=p)))
-    return [section, {"type": "actions", "block_id": f"meeting-act-{mid}", "elements": elements[:5]}]
+        next_btns = [
+            _btn(f"다음: {p}", f"{ACTION_PREFIX}next", action_value(mid, "next", profile=p))
+            for p in meeting.get("participants", [])[:24]
+        ]
+        if next_btns:
+            blocks.append({"type": "actions", "block_id": f"meeting-next-{mid}", "elements": next_btns})
+    return blocks
 
 
 def build_meeting_room_blocks(store: dict, channel_id: str) -> tuple:
@@ -210,11 +215,12 @@ def build_meeting_room_blocks(store: dict, channel_id: str) -> tuple:
         blocks.append({"type": "context", "elements": [
             {"type": "mrkdwn", "text": "_아직 회의가 없습니다. `새 회의 시작`을 누르세요._"}]})
     for m in rows:
-        if len(blocks) + 2 > _MAX_BLOCKS:
+        row = _meeting_row_blocks(m)
+        if len(blocks) + len(row) > _MAX_BLOCKS:
             blocks.append({"type": "context", "elements": [
                 {"type": "mrkdwn", "text": "_표시 한도를 초과한 회의는 생략됨._"}]})
             break
-        blocks.extend(_meeting_row_blocks(m))
+        blocks.extend(row)
     return "Hermes Meeting Room", blocks
 
 

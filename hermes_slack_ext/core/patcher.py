@@ -66,15 +66,9 @@ def apply_board_patch(text: str, methods_frag: str) -> str:
             raise PatchError("missing command registration import marker")
         text = text.replace(marker, marker + BOARD_COMMAND_SNIPPET, 1)
 
-    single_line = "            _slash_names = [name for name, _d, _h in slack_native_slashes()]\n"
-    filtered = (
-        "            _slash_names = [\n"
-        "                name for name, _d, _h in slack_native_slashes()\n"
-        '                if name != "board"\n'
-        "            ]\n"
-    )
-    if single_line in text:
-        text = text.replace(single_line, filtered, 1)
+    # generic-slash 제외 — 공유 헬퍼로 위임(board/meeting 설치 순서와 무관하게 합성·멱등).
+    # board-only는 기존과 동일하게 `if name != "board"`를 만든다.
+    text = _apply_slash_exclusion(text, "board")
 
     if "hermes_board_task_create" not in text:
         marker = "            # Start Socket Mode handler in background\n"
