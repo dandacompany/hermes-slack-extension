@@ -20,15 +20,21 @@ class WireupStep(Step):
     def apply(self, ctx: WizardContext) -> None:
         profs = ctx.data["profiles"]
         human = ctx.data.get("human_user_id", "")
+
+        moderator = next((p for p in profs if p.get("base_app")), profs[0])
+        mod_name = moderator["persona_display_name"]
+        # 모더레이터(베이스 Hermes 앱)는 참가자 루프의 auth.test 캡처를 거치지 않아
+        # bot_user_id가 비어 있다. ctx의 moderator_bot_user_id로 보충해야
+        # allowed_users에 포함되어 모더레이터→참가자 멘션 라우팅이 동작한다.
+        mod_bot = ctx.data.get("moderator_bot_user_id", "")
+        if mod_bot and not moderator.get("bot_user_id"):
+            moderator["bot_user_id"] = mod_bot
         bot_ids = [p["bot_user_id"] for p in profs if p.get("bot_user_id")]
         allowed = P.build_allowed_users(human, bot_ids)
 
         staging = Path(ctx.data.get("staging_dir")
                        or (Path.home() / ".hermes" / "hermes-slack-ext" / "staging"))
         staging.mkdir(parents=True, exist_ok=True)
-
-        moderator = next((p for p in profs if p.get("base_app")), profs[0])
-        mod_name = moderator["persona_display_name"]
 
         # 1) bot-to-bot env (각 프로필 .env)
         for p in profs:

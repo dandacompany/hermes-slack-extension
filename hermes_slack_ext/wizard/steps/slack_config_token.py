@@ -18,6 +18,25 @@ class SlackConfigTokenStep(Step):
         refresh = prompts.password("refresh_token", "Configuration Refresh Token (xoxe-1-...)")
         ctx.data["config_token"] = token
         ctx.data["config_refresh_token"] = refresh
+        self._collect_context(ctx, prompts)
+
+    def _collect_context(self, ctx: WizardContext, prompts: Prompts) -> None:
+        """회의 컨텍스트(비밀 아닌 공개 id)를 수집한다. 헤드리스(non_interactive)는
+        --answers-file 주입에 의존하므로 프롬프트를 건너뛰고, 대화형에서만 누락된 값을
+        묻는다. moderator_bot_user_id는 베이스 Hermes 앱(모더레이터)의 Bot User ID로,
+        allowed_users에 포함되어야 모더레이터→참가자 멘션 라우팅이 동작한다."""
+        if ctx.non_interactive:
+            return
+        if not ctx.data.get("channel_id"):
+            ctx.data["channel_id"] = prompts.text(
+                "channel_id", "회의 채널 ID (Cxxxxxxxx)", default="")
+        if not ctx.data.get("human_user_id"):
+            ctx.data["human_user_id"] = prompts.text(
+                "human_user_id", "당신의 Slack User ID (Uxxxxxxxx)", default="")
+        if not ctx.data.get("moderator_bot_user_id"):
+            ctx.data["moderator_bot_user_id"] = prompts.text(
+                "moderator_bot_user_id",
+                "모더레이터(베이스 Hermes 앱) Bot User ID (Uxxxxxxxx)", default="")
 
     def apply(self, ctx: WizardContext) -> None:
         # 마스킹된 확인만 출력(값 노출 금지). 실제 유효성은 slack_apps 단계의 첫 호출에서 확인.

@@ -65,8 +65,8 @@ def install(
         answers = yaml.safe_load(Path(answers_file).read_text()) or {}
         # 비-프롬프트 값은 ctx.data로 직접 주입
         for k in ("manifest_out", "moderator_name", "backup_root", "base_app_id",
-                  "channel_id", "human_user_id", "profile_env_dir", "skills_dir",
-                  "staging_dir"):
+                  "channel_id", "human_user_id", "moderator_bot_user_id",
+                  "profile_env_dir", "skills_dir", "staging_dir"):
             if k in answers:
                 ctx.data[k] = answers[k]
         # 프롬프트 키는 ScriptedPrompts로. features는 checkbox가 리스트 전체를

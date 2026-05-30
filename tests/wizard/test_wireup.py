@@ -37,3 +37,26 @@ def test_wireup_writes_allowed_users_and_skill(tmp_path):
     assert (skills_dir / "hermes-meeting" / "SKILL.md").exists()
     # 채널 프롬프트 스테이징
     assert (Path(ctx.data["staging_dir"]) / "researcher.channel-prompt.txt").exists()
+
+
+def test_wireup_pulls_moderator_bot_from_ctx(tmp_path):
+    # 모더레이터 프로필에 bot_user_id가 없을 때(실제 기본 흐름), ctx의
+    # moderator_bot_user_id가 allowed_users에 들어가야 한다(C1 회귀 가드).
+    envs = tmp_path / "envs"; envs.mkdir()
+    (envs / "researcher.env").write_text("SLACK_BOT_TOKEN=x\n")
+    profs = _profiles()
+    del profs[0]["bot_user_id"]  # 모더레이터는 캡처 경로가 없어 비어 있음
+    ctx = WizardContext(hermes_root=tmp_path)
+    ctx.data.update({
+        "features": ["meeting"], "profiles": profs,
+        "human_user_id": "Uhuman", "moderator_bot_user_id": "Bmod2",
+        "profile_env_dir": str(envs), "skills_dir": str(tmp_path / "skills"),
+        "staging_dir": str(tmp_path / "staging"),
+    })
+    profs[1]["env_path"] = str(envs / "researcher.env")
+    W.WireupStep().apply(ctx)
+
+    env = (envs / "researcher.env").read_text()
+    assert "Bmod2" in env and "Bp1" in env and "Uhuman" in env
+    # 모더레이터 프로필에도 보충됨
+    assert profs[0]["bot_user_id"] == "Bmod2"

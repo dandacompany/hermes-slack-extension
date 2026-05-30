@@ -35,6 +35,7 @@ def test_headless_meeting_setup(tmp_path, monkeypatch):
         "profile_mode": "default",
         "config_token": "xoxe-t", "refresh_token": "xoxe-r",
         "channel_id": "C1", "human_user_id": "Uhuman",
+        "moderator_bot_user_id": "Bmod",
         "profile_env_dir": str(tmp_path / "envs"),
         "skills_dir": str(tmp_path / "skills"),
         "staging_dir": str(tmp_path / "staging"),
@@ -52,9 +53,10 @@ def test_headless_meeting_setup(tmp_path, monkeypatch):
         "--non-interactive", "--state-dir", str(tmp_path / "state"),
     ])
     assert result.exit_code == 0, result.stdout
-    # 참가자 env 3개 생성 + allowed_users 배선
+    # 참가자 env 3개 생성 + allowed_users 배선(모더레이터 봇 포함)
     for pid in ("researcher", "developer", "designer"):
         env = (tmp_path / "envs" / f"{pid}.env").read_text()
         assert "SLACK_BOT_TOKEN=" in env and "SLACK_ALLOW_BOTS=mentions" in env
+        assert "Bmod" in env, f"{pid}.env의 allowed_users에 모더레이터 봇 누락"
     # moderator 스킬 설치
     assert (tmp_path / "skills" / "hermes-meeting" / "SKILL.md").exists()
