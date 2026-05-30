@@ -23,15 +23,17 @@ class MeetingRuntimeStep(Step):
         root = ctx.hermes_root
         backup_root = Path(ctx.data.get("backup_root")
                            or (root.parent / "backups" / "hermes-slack-ext"))
-        rels = ["gateway/platforms/slack.py",
-                "gateway/platforms/slack_meeting_room.py",
+        slack_py = root / "gateway/platforms/slack.py"
+        text = slack_py.read_text(encoding="utf-8")
+        rels = ["gateway/platforms/slack_meeting_room.py",
                 "tests/test_slack_meeting_room.py"]
+        # slack.py는 *패치 전(클린)* 상태일 때만 백업한다(클린 백업 보존 불변식 — 보드 스텝과 동일).
+        if not (patcher.board_markers_present(text) or patcher.meeting_markers_present(text)):
+            rels.insert(0, "gateway/platforms/slack.py")
         backups.backup_files(root, rels, backup_root)
 
         # 1) slack.py 미팅 패치 (보드와 합성·멱등)
         frag = (_OVERLAY / "gateway/platforms/slack_meeting_methods.pyfrag").read_text(encoding="utf-8")
-        slack_py = root / "gateway/platforms/slack.py"
-        text = slack_py.read_text(encoding="utf-8")
         slack_py.write_text(patcher.apply_meeting_patch(text, frag), encoding="utf-8")
 
         # 2) 오버레이 모듈 복사

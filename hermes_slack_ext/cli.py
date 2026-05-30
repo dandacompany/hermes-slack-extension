@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -7,6 +9,7 @@ import typer
 import yaml
 
 from hermes_slack_ext import __version__
+from hermes_slack_ext.core import teardown, slack_api
 from hermes_slack_ext.core.state import WizardState
 from hermes_slack_ext.wizard.engine import Wizard, WizardContext
 from hermes_slack_ext.wizard.prompts import Prompts, ScriptedPrompts
@@ -45,6 +48,26 @@ def _build_steps():
         MeetingProfilesStep(), SlackConfigTokenStep(), SlackAppsStep(),
         ModeratorAppStep(), WireupStep(), MeetingRuntimeStep(),
     ]
+
+
+# 원복(uninstall)용 메타. 시크릿(토큰) 절대 미포함.
+_RECORD_KEYS = (
+    "features", "created_app_ids", "base_app_id", "slash_dropped",
+    "backup_root", "profile_env_dir", "skills_dir", "staging_dir",
+)
+
+
+def _record_install(state: WizardState, ctx: WizardContext) -> None:
+    record = dict(state.data.get("install_record", {}))
+    for key in _RECORD_KEYS:
+        val = ctx.data.get(key)
+        # 재개 실행에서 빈 값이 기존 비어있지 않은 기록을 덮어쓰지 않도록 merge.
+        if val in (None, [], "", {}) and record.get(key) not in (None, [], "", {}):
+            continue
+        if val is not None:
+            record[key] = val
+    state.data["install_record"] = record
+    state.save()
 
 
 @app.command()
@@ -90,10 +113,103 @@ def install(
     ctx.data.setdefault("backup_root", str(Path(state_dir) / "backups" / "board"))
     state = WizardState(Path(state_dir) / "state.json").load()
     Wizard(_build_steps(), prompts, state).run(ctx)
+    if not dry_run:
+        _record_install(state, ctx)
     if dry_run:
         typer.echo("드라이런 완료 — 실제 변경 없음.")
     else:
         typer.echo("설치 완료. 게이트웨이를 재시작하세요: hermes gateway restart")
+
+
+@app.command()
+def uninstall(
+    hermes_root: str = typer.Option(str(Path.home() / ".hermes/hermes-agent"), "--hermes-root"),
+    state_dir: str = typer.Option(str(Path.home() / ".hermes/hermes-slack-ext"), "--state-dir"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    yes: bool = typer.Option(False, "--yes"),
+    delete_apps: bool = typer.Option(False, "--delete-apps",
+                                     help="생성된 참가자 Slack 앱을 apps.manifest.delete로 삭제"),
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+) -> None:
+    """설치 역연산: slack.py 복원(언패치)·오버레이 제거·미팅 산출물 정리·(옵션)생성 앱 삭제."""
+    root = Path(hermes_root).expanduser().resolve()
+    diag = teardown.diagnose(root, state_dir)
+    record = teardown.load_record(state_dir)
+    home = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+
+    typer.echo("원복 계획:")
+    typer.echo(f"  - slack.py 복원(백업): {'있음' if diag['backup_present'] else '없음(수동 필요)'} @ {diag['backup_root']}")
+    typer.echo(f"  - 오버레이 삭제: {diag['overlays_present'] or '없음'}")
+    if diag["created_app_ids"]:
+        action = "삭제" if delete_apps else "보존(--delete-apps로 삭제)"
+        typer.echo(f"  - 생성 앱 {len(diag['created_app_ids'])}개: {action}")
+    if dry_run:
+        plan = teardown.restore_slack_py(root, diag["backup_root"], dry_run=True)
+        typer.echo(f"  [dry-run] 복원 예정 {len(plan)}개, "
+                   f"오버레이 {len(teardown.remove_overlays(root, dry_run=True))}개")
+        typer.echo("드라이런 — 실제 변경 없음.")
+        return
+
+    if not yes and not non_interactive:
+        typer.confirm("위 계획대로 원복할까요?", abort=True)
+
+    if diag["backup_present"]:
+        teardown.restore_slack_py(root, diag["backup_root"])
+        typer.echo("  slack.py 복원 완료.")
+    else:
+        typer.echo("  백업이 없어 slack.py를 자동 복원하지 못했습니다(마커 수동 제거 필요).")
+    removed = teardown.remove_overlays(root)
+    typer.echo(f"  오버레이 {len(removed)}개 삭제.")
+    cleaned = teardown.cleanup_artifacts(record, home)
+    typer.echo(f"  산출물 {len(cleaned)}개 정리.")
+
+    if delete_apps and diag["created_app_ids"]:
+        token = os.environ.get("HSE_CONFIG_TOKEN", "")
+        if not token and not non_interactive:
+            token = typer.prompt("App Configuration Token (xoxe-...)", hide_input=True)
+        if not token:
+            typer.echo("  config 토큰이 없어 생성 앱 삭제를 건너뜁니다. "
+                       "수동 삭제 대상 app_id: " + ", ".join(diag["created_app_ids"]))
+        else:
+            for app_id in diag["created_app_ids"]:
+                try:
+                    slack_api.delete_app(token, app_id)
+                    typer.echo(f"  앱 삭제: {app_id}")
+                except slack_api.SlackAPIError as exc:
+                    typer.echo(f"  앱 삭제 실패({app_id}): {exc.error}")
+
+    sp = Path(state_dir) / "state.json"
+    if sp.exists():
+        raw = json.loads(sp.read_text(encoding="utf-8"))
+        raw.setdefault("data", {})["uninstalled"] = True
+        sp.write_text(json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8")
+    typer.echo("원복 완료. 게이트웨이를 재시작하세요: hermes gateway restart")
+
+
+@app.command()
+def doctor(
+    hermes_root: str = typer.Option(str(Path.home() / ".hermes/hermes-agent"), "--hermes-root"),
+    state_dir: str = typer.Option(str(Path.home() / ".hermes/hermes-slack-ext"), "--state-dir"),
+) -> None:
+    """설치 상태 진단(패치 적용·오버레이·백업·기록)."""
+    root = Path(hermes_root).expanduser().resolve()
+    d = teardown.diagnose(root, state_dir)
+
+    def _mark(b: bool) -> str:
+        return "✓" if b else "✗"
+
+    typer.echo(f"Hermes: {d['hermes_root']} (version: {d['version'] or '미상'})")
+    typer.echo(f"  slack.py present : {_mark(d['slack_py_exists'])}")
+    typer.echo(f"  board patched    : {_mark(d['board_patched'])}")
+    typer.echo(f"  meeting patched  : {_mark(d['meeting_patched'])}")
+    typer.echo(f"  overlays         : {d['overlays_present'] or '없음'}")
+    typer.echo(f"  backup available : {_mark(d['backup_present'])} @ {d['backup_root']}")
+    typer.echo(f"  install record   : {_mark(d['has_record'])}"
+               f" (features={d['features']}, dropped={d['slash_dropped']})")
+    typer.echo(f"  created apps     : {len(d['created_app_ids'])}개")
+    if not d["has_record"] and (d["board_patched"] or d["meeting_patched"]):
+        typer.echo("  ⚠ 패치는 적용됐으나 install record가 없습니다 — "
+                   "uninstall은 백업/마커 기반으로만 동작(생성 앱 자동삭제 불가).")
 
 
 if __name__ == "__main__":
