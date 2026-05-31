@@ -19,6 +19,8 @@ class SlackAdapter:
 
     async def send(self, chat_id, content, reply_to=None, metadata=None):
         try:
+            # Convert standard markdown → Slack mrkdwn
+            formatted = self.format_message(content)
             last_result = None
             sent_ts = None
             return SendResult(

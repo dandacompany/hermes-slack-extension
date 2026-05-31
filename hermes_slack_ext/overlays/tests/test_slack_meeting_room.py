@@ -158,6 +158,18 @@ def test_build_meeting_card_blocks_has_inline_actions():
     assert f"{mr.ACTION_PREFIX}end" in ids
 
 
+def test_build_meeting_card_blocks_hides_buttons_while_awaiting():
+    base = {"id": "mtg-x", "title": "YT 기획", "participants": ["Researcher"],
+            "status": "review", "routing_mode": "auto"}
+    # awaiting -> "responding" context, no action buttons (don't let the user press
+    # the next button before the moderator's reply is visible)
+    fallback, blocks = mr.build_meeting_card_blocks({**base, "awaiting": True})
+    assert "responding" in blocks[0]["elements"][0]["text"]
+    assert _card_action_ids(blocks) == []
+    # not awaiting -> buttons return
+    assert _card_action_ids(mr.build_meeting_card_blocks({**base, "awaiting": False})[1]) != []
+
+
 def test_meeting_control_elements_are_status_aware():
     base = {"id": "m", "participants": ["Researcher", "Designer"], "routing_mode": "manual"}
     # setup -> Start
@@ -181,6 +193,42 @@ def test_build_approve_prompt_signals_approval_not_redraft():
     assert "Approved" in auto and "Do not print the setup draft again" in auto and "auto" in auto
     manual = mr.build_approve_prompt({"routing_mode": "manual"})
     assert "manual" in manual
+
+
+def test_apply_meeting_mentions_converts_known_at_names():
+    m = {"Researcher": "U111", "Moderator": "U999"}
+    out = mr.apply_meeting_mentions("@Researcher, your turn. Then @Moderator.", m)
+    assert out == "<@U111>, your turn. Then <@U999>."
+
+
+def test_apply_meeting_mentions_ignores_unknown_and_bare_names():
+    m = {"Researcher": "U111"}
+    # bare "Researcher" (no @) and unknown "@Backend" are left untouched
+    assert mr.apply_meeting_mentions("Researcher and @Backend speak", m) == "Researcher and @Backend speak"
+
+
+def test_strip_meeting_scaffolding_removes_meeting_block_and_parallel_done():
+    text = (
+        "[MEETING]\nid: x\nstatus: active\n[/MEETING]\n\n"
+        "@Researcher, your turn.\n\n[PARALLEL-DONE]\n"
+    )
+    out = mr.strip_meeting_scaffolding(text)
+    assert "[MEETING]" not in out and "[/MEETING]" not in out
+    assert "[PARALLEL-DONE]" not in out
+    assert "@Researcher, your turn." in out
+
+
+def test_clean_meeting_message_strips_then_mentions():
+    m = {"Researcher": "U111"}
+    text = "[MEETING]\nturns: 0/4\n[/MEETING]\n\n@Researcher, please start."
+    out = mr.clean_meeting_message(text, m)
+    assert "[MEETING]" not in out
+    assert "<@U111>, please start." in out
+
+
+def test_clean_meeting_message_noop_without_map():
+    text = "@Researcher hi"
+    assert mr.clean_meeting_message(text, {}) == "@Researcher hi"
 
 
 def test_room_blocks_render_meeting_rows_with_actions(tmp_path, monkeypatch):

@@ -106,6 +106,7 @@ def cleanup_artifacts(record: dict, hermes_home, dry_run: bool = False) -> list:
     home = Path(hermes_home)
     targets = [
         home / "hermes-slack-ext" / "meeting_participants.json",
+        home / "hermes-slack-ext" / "meeting_mentions.json",
         home / "hermes-slack-ext" / "meeting_sessions.json",
         home / "hermes-slack-ext" / "base-manifest.json",
     ]

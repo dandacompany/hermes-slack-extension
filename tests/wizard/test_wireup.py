@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from hermes_slack_ext.wizard.engine import WizardContext
@@ -15,7 +16,8 @@ def _profiles():
     ]
 
 
-def test_wireup_writes_allowed_users_and_skill(tmp_path):
+def test_wireup_writes_allowed_users_and_skill(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
     envs = tmp_path / "envs"; envs.mkdir()
     (envs / "researcher.env").write_text("SLACK_BOT_TOKEN=x\n")
     skills_dir = tmp_path / "skills"
@@ -37,11 +39,15 @@ def test_wireup_writes_allowed_users_and_skill(tmp_path):
     assert (skills_dir / "hermes-meeting" / "SKILL.md").exists()
     # channel prompt staging
     assert (Path(ctx.data["staging_dir"]) / "researcher.channel-prompt.txt").exists()
+    # mention-map sidecar: display name -> bot user id (for @ProfileName auto routing)
+    mentions = json.loads((tmp_path / "home" / "hermes-slack-ext" / "meeting_mentions.json").read_text())
+    assert mentions == {"Moderator": "Bmod", "Researcher": "Bp1"}
 
 
-def test_wireup_pulls_moderator_bot_from_ctx(tmp_path):
+def test_wireup_pulls_moderator_bot_from_ctx(tmp_path, monkeypatch):
     # when the moderator profile has no bot_user_id (the real default flow),
     # ctx's moderator_bot_user_id must end up in allowed_users (C1 regression guard).
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
     envs = tmp_path / "envs"; envs.mkdir()
     (envs / "researcher.env").write_text("SLACK_BOT_TOKEN=x\n")
     profs = _profiles()
@@ -60,3 +66,6 @@ def test_wireup_pulls_moderator_bot_from_ctx(tmp_path):
     assert "Bmod2" in env and "Bp1" in env and "Uhuman" in env
     # also backfilled into the moderator profile
     assert profs[0]["bot_user_id"] == "Bmod2"
+    # mention map uses the backfilled moderator id so @Moderator hand-off converts
+    mentions = json.loads((tmp_path / "home" / "hermes-slack-ext" / "meeting_mentions.json").read_text())
+    assert mentions["Moderator"] == "Bmod2" and mentions["Researcher"] == "Bp1"

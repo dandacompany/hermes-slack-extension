@@ -118,6 +118,7 @@
         if not live:
             return
         meeting = live[0]
+        meeting["awaiting"] = False  # the moderator's reply just arrived; show controls again
         client = self._get_client(chat_id)
         old_ts = meeting.get("control_ts")
         if old_ts:
@@ -134,9 +135,30 @@
                 m = get_meeting(store, meeting["id"])
                 if m is not None:
                     m["control_ts"] = ts
+                    m["awaiting"] = False
                     save_store(store)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("[Slack] meeting controls repost failed: %s", exc)
+
+    def _maybe_clean_meeting_message(self, chat_id: str, content: str) -> str:
+        """Strip internal scaffolding ([MEETING] blocks, [PARALLEL-DONE]) and
+        convert `@ProfileName` routing into real Slack mentions so participant and
+        moderator bots actually get pinged (auto routing). Gated only on a mention
+        map being present (a meeting install) — NOT on a local live meeting,
+        because participant bots run in their own container and do not hold the
+        meeting in their store; their hand-off `@Moderator` must still convert.
+        clean_meeting_message is a no-op unless a known `@Name` or scaffolding is
+        present, so running it on every send in a meeting install is safe. Called
+        from send() before the agent's text is posted."""
+        try:
+            from gateway.platforms.slack_meeting_room import (
+                load_mention_map, clean_meeting_message)
+            mp = load_mention_map()
+            if not mp:
+                return content
+            return clean_meeting_message(content, mp)
+        except Exception:
+            return content
 
     async def _post_meeting_note(self, meeting: dict, text: str) -> None:
         """Post an immediate acknowledgement note (button feedback) so the user
@@ -201,18 +223,23 @@
             status = meeting.get("status", "setup")
             if status == "review":
                 set_status(store, meeting_id, "active"); save_store(store)
-                await self._post_meeting_note(meeting, ":white_check_mark: Approved — starting the discussion.")
+                await self._post_meeting_note(meeting, ":white_check_mark: Approved — the moderator is kicking off the discussion. This can take up to a minute.")
                 await self._dispatch_meeting_prompt(meeting, build_approve_prompt(meeting))
             else:
                 set_status(store, meeting_id, "review"); save_store(store)
-                await self._post_meeting_note(meeting, ":arrow_forward: Starting the meeting — the moderator is preparing the setup.")
+                await self._post_meeting_note(meeting, ":arrow_forward: Starting — the moderator is drafting the setup. This can take up to a minute.")
                 await self._dispatch_meeting_prompt(meeting, build_start_prompt(meeting))
+            # Mark awaiting so the in-place card hides buttons until the reply lands;
+            # the send() hook clears it and re-posts the card with buttons below the reply.
+            meeting["awaiting"] = True; save_store(store)
             await self._refresh_meeting_surface(body, meeting)
             return
         if kind == "next":
             profile = data.get("profile", "")
+            meeting["awaiting"] = True; save_store(store)
             await self._post_meeting_note(meeting, f":arrow_right: Next speaker: *{profile}*")
             await self._dispatch_meeting_prompt(meeting, build_next_prompt(meeting, profile))
+            await self._refresh_meeting_surface(body, meeting)
             return
         if kind == "end":
             await self._post_meeting_note(meeting, ":stop_button: Ending the meeting.")

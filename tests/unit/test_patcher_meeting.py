@@ -22,6 +22,8 @@ class SlackAdapter:
 
     async def send(self, chat_id, content, reply_to=None, metadata=None):
         try:
+            # Convert standard markdown → Slack mrkdwn
+            formatted = self.format_message(content)
             last_result = None
             sent_ts = None
             return SendResult(
@@ -58,6 +60,16 @@ def test_meeting_patch_splices_send_controls_hook():
     hook = out.index("await self._maybe_post_meeting_controls(chat_id)")
     ret = out.index("return SendResult(\n                success=True,", hook)
     assert ret > hook  # the call precedes the success return
+
+
+def test_meeting_patch_splices_send_clean_hook():
+    # The input hook must clean/convert the message before format_message() so
+    # @ProfileName routing becomes a real mention and scaffolding is stripped.
+    out = P.apply_meeting_patch(_SKELETON, _MEETING_FRAG)
+    assert "content = self._maybe_clean_meeting_message(chat_id, content)" in out
+    clean = out.index("self._maybe_clean_meeting_message(chat_id, content)")
+    fmt = out.index("formatted = self.format_message(content)", clean)
+    assert fmt > clean  # the clean call precedes format_message
 
 
 def test_meeting_patch_raises_without_send_anchor():

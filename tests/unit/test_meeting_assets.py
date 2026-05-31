@@ -32,3 +32,16 @@ def test_channel_prompts_have_both_templates():
     assert "manager_channel_prompt" in cp
     assert "participant_channel_prompt" in cp
     assert "<PERSONA_NAME>" in cp["participant_channel_prompt"]
+
+
+def test_channel_prompts_use_at_routing_without_scaffolding():
+    cp = _load("channel-prompts.yaml")
+    mgr = cp["manager_channel_prompt"]
+    par = cp["participant_channel_prompt"]
+    # Moderator routes by @<ProfileName>; participant hands back with @<MODERATOR_NAME>.
+    assert "@<ProfileName>" in mgr
+    assert "@<MODERATOR_NAME>" in par
+    # No mandated machine scaffolding: no [MEETING] state-block template, and the
+    # hand-off is a natural mention rather than a "handoff:" label.
+    assert "[/MEETING]" not in mgr
+    assert "handoff: @" not in par

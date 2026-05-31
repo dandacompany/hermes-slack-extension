@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -142,6 +143,61 @@ def parse_action_value(value: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+# ----- Auto-routing: profile-name -> real Slack mention + scaffolding cleanup -----
+
+def mention_map_path() -> Path:
+    return _hermes_home() / "hermes-slack-ext" / "meeting_mentions.json"
+
+
+def load_mention_map() -> dict:
+    """Profile display name -> Slack user id (e.g. {"Researcher": "U123"}). Written
+    at install (wireup) so the moderator's gateway can turn `@Researcher` routing
+    into a real mention that actually pings the participant bot."""
+    p = mention_map_path()
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except (ValueError, OSError):
+        return {}
+
+
+_MEETING_BLOCK_RE = re.compile(r"\n*\[MEETING\].*?\[/MEETING\]\n*", re.DOTALL)
+_PARALLEL_DONE_RE = re.compile(r"(?m)^\s*\[PARALLEL-DONE\]\s*$\n?")
+
+
+def strip_meeting_scaffolding(text: str) -> str:
+    """Remove internal scaffolding the moderator/participants emit that end users
+    should not see: the [MEETING] state block and [PARALLEL-DONE] markers. Routing
+    addresses (`@Name`) are kept — they carry the hand-off and become real mentions.
+    SKILL.md is also simplified to not emit these; this is a defensive net."""
+    if not text:
+        return text
+    text = _MEETING_BLOCK_RE.sub("\n", text)
+    text = _PARALLEL_DONE_RE.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text
+
+
+def apply_meeting_mentions(text: str, name_to_id: dict) -> str:
+    """Convert `@<ProfileName>` tokens (for known profiles) into real Slack
+    mentions `<@id>` so routing/hand-off actually pings the target bot. Only known
+    profile names are converted, longest first to avoid partial matches."""
+    if not text or not name_to_id:
+        return text
+    for name in sorted(name_to_id, key=len, reverse=True):
+        uid = name_to_id.get(name)
+        if not uid:
+            continue
+        text = re.sub(r"@" + re.escape(name) + r"\b", f"<@{uid}>", text)
+    return text
+
+
+def clean_meeting_message(text: str, name_to_id: dict) -> str:
+    """Outbound pipeline for messages in an active meeting channel: drop
+    scaffolding, then convert `@Name` routing into real mentions."""
+    return apply_meeting_mentions(strip_meeting_scaffolding(text), name_to_id)
+
+
 # ----- Prompt Contract builders (block-kit-meeting-ui.md) -----
 
 _SESSION_NOTE = (
@@ -264,14 +320,32 @@ def _meeting_row_blocks(meeting: dict) -> list:
 
 
 def build_meeting_card_blocks(meeting: dict) -> tuple:
-    """Single-meeting in-channel control card. Exposes the same action buttons
-    (Start/Continue/End/Next) as the /meeting room directly in the channel body,
-    so the user controls the meeting where the conversation flows without
-    re-invoking a slash command. Posted on creation and refreshed on each action."""
+    """Single-meeting in-channel control card. Exposes the action buttons
+    (Start/Approve/Continue/End/Next) in the channel body so the user controls the
+    meeting where the conversation flows without re-invoking a slash command.
+
+    While `awaiting` is set (a button was pressed and the moderator's async reply
+    has not arrived yet), the card shows a "responding…" state with NO action
+    buttons — the buttons reappear only once the reply is posted (the send() hook
+    re-posts this card below the reply). This prevents the user from pressing the
+    next button before the answer is visible. The /meeting room launcher is not
+    gated this way, so it remains a recovery path."""
+    mid = meeting["id"]
     title = meeting.get("title", "(untitled)")
-    blocks = [{"type": "context", "elements": [{"type": "mrkdwn",
-               "text": ":clipboard: *Meeting Controls* — use the buttons below."}]}]
-    blocks.extend(_meeting_row_blocks(meeting))
+    status = STATUS_LABELS.get(meeting.get("status", ""), meeting.get("status", ""))
+    parts = ", ".join(meeting.get("participants", [])) or "—"
+    awaiting = bool(meeting.get("awaiting"))
+    ctx_text = (":hourglass_flowing_sand: *Meeting Controls* — the moderator is responding; "
+                "controls appear below the reply."
+                if awaiting else ":clipboard: *Meeting Controls* — use the buttons below.")
+    blocks = [
+        {"type": "context", "elements": [{"type": "mrkdwn", "text": ctx_text}]},
+        {"type": "section", "block_id": f"meeting-{mid}",
+         "text": {"type": "mrkdwn",
+                  "text": f"*{title}*  ·  _{status}_\nParticipants: {parts}"}},
+    ]
+    if not awaiting:
+        blocks.extend(meeting_control_elements(meeting))
     return f"Meeting Controls — {title}", blocks
 
 

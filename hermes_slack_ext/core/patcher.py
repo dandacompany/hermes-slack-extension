@@ -144,6 +144,15 @@ _SEND_RETURN_ANCHOR = (
     "            )\n"
 )
 
+# Outbound send() input hook: in a live-meeting channel, strip internal
+# scaffolding and convert `@ProfileName` routing into real mentions before the
+# agent's text is formatted/posted. The call is spliced before format_message().
+_SEND_CLEAN_CALL = "            content = self._maybe_clean_meeting_message(chat_id, content)\n"
+_SEND_FORMAT_ANCHOR = (
+    "            # Convert standard markdown → Slack mrkdwn\n"
+    "            formatted = self.format_message(content)\n"
+)
+
 
 def _apply_slash_exclusion(text: str, name: str) -> str:
     """Exclude `name` from the generic-slash list. (A) one-liner -> `!= name`,
@@ -212,6 +221,12 @@ def apply_meeting_patch(text: str, methods_frag: str) -> str:
         if _SEND_RETURN_ANCHOR not in text:
             raise PatchError("send() success-return anchor not found")
         text = text.replace(_SEND_RETURN_ANCHOR, _SEND_HOOK_CALL + _SEND_RETURN_ANCHOR, 1)
+
+    # Input hook: clean/convert meeting messages before they are formatted.
+    if "self._maybe_clean_meeting_message(chat_id, content)" not in text:
+        if _SEND_FORMAT_ANCHOR not in text:
+            raise PatchError("send() format_message anchor not found")
+        text = text.replace(_SEND_FORMAT_ANCHOR, _SEND_CLEAN_CALL + _SEND_FORMAT_ANCHOR, 1)
 
     _assert_single_bodied_confirm(text)
     return text

@@ -59,22 +59,7 @@ If routing control is `auto`, immediately route one next speaker. If routing con
 
 ## State
 
-Maintain a compact state block on every routing, pause, resume, synthesis, or decision message:
-
-```text
-[MEETING]
-id: <short-id>
-status: setup | active | paused | waiting | ended
-mode: sequential | parallel | directed | mixed
-phase: framing | divergence | critique | synthesis | decision
-turns: <counted>/<total>
-current_speaker: <profile-or-none>
-pending: <profiles-or-none>
-completed: <profiles-or-none>
-next: <profile-or-action>
-last_event: <brief>
-[/MEETING]
-```
+Track meeting state internally — phase, turn count, who has spoken, who is next. Do NOT print a `[MEETING]` block or any machine-readable state to the channel. Keep every message natural and human-readable; the visible conversation and the Meeting Controls card are what the user sees.
 
 Only substantive participant replies and final moderator synthesis count as turns. Routing, metadata, retries, and user clarification do not count as turns.
 
@@ -85,23 +70,23 @@ Only the moderator assigns speaking turns. If the user speaks, pause routing and
 Slack routing rule:
 
 - Every routed turn must target only one selected profile.
-- Use the visible profile name in routing text, such as `<PARTICIPANT_NAME>, your turn (1 turn).` (render the phrase in the meeting language). The gateway may convert that line to the real Slack mention internally.
-- Do not ask the user for Slack user IDs and do not print mention maps or ID examples in warnings, explanations, code blocks, or checklists.
-- Every routed turn must include enough context for that participant to answer from the current meeting state: the `[MEETING]` block, the relevant prior decisions or disagreement, and the bounded question for that profile.
-- In sequential handoff, participants use the visible moderator mention form `handoff: @<MODERATOR_NAME>`, replacing `<MODERATOR_NAME>` with the moderator shown in the meeting state or routing prompt.
+- Address the next speaker with `@<ProfileName>` (for example `@Researcher`). The gateway converts a known `@<ProfileName>` into a real Slack mention that pings that participant bot, so ALWAYS use this exact `@Name` form to route — never the bare name without `@`, and never ask for or print raw Slack user IDs.
+- Keep routing concise and natural: a short prompt naming what you want from that speaker (render it in the meeting language). Do NOT print a `[MEETING]` block, `handoff:`/`round:`/`next:` labels, scope checklists, or other scaffolding to the channel.
+- Give the speaker just enough context to answer: the relevant prior point or disagreement and one bounded question.
+- Participants hand back by addressing `@<ModeratorName>` (for example `@Moderator`) at the end of their reply — a natural sentence, with no `handoff:` label.
 
 Sequential mode:
 
-- Mention exactly one participant.
+- Mention exactly one participant with `@<ProfileName>`.
 - Participant substantive replies count as turns.
 - Moderator routing messages do not count as turns.
-- Participants hand back with `handoff: @<MODERATOR_NAME>`.
+- Participants hand back by addressing `@<ModeratorName>` naturally at the end (no `handoff:` label).
 - Do not route to the next participant until the expected participant answers, the user intervenes, or the timeout policy is triggered.
 
 Parallel mode:
 
-- Mention multiple participants once.
-- Include this instruction (phrased in the meeting language): for parallel replies, do not mention each other, do not add a handoff at the end, and finish with `[PARALLEL-DONE]`.
+- Mention multiple participants once, each as `@<ProfileName>`.
+- Include this instruction (phrased in the meeting language): for parallel replies, do not mention each other and finish with `[PARALLEL-DONE]` (the gateway hides this marker from the channel).
 - Summarize only after all expected participants respond or the user asks to summarize.
 - If a participant is missing, mark them as missing. Do not invent their position.
 
@@ -162,21 +147,10 @@ Then:
 
 For any voice mode except `text-only`, wrap the exact speakable text (in the meeting language) in `[TTS]...[/TTS]`.
 Use `[TTS]` for only the summary sentence in `voice-summary`, and for only the spoken answer in `voice-full`.
-Keep routing state, Slack mentions, handoff markers, and control metadata outside `[TTS]`.
+Keep Slack mentions and any control markers outside `[TTS]`.
 For Slack file uploads, prefer MP3 output by default. Do not configure command TTS as `voice_compatible: true` unless the target platform explicitly requires Opus voice bubbles, because that setting can convert MP3 into OGG.
 
-TTS must speak only meeting content. Do not speak:
-
-```text
-[MEETING]
-[/MEETING]
-round:
-speaker_done:
-next:
-handoff:
-participant mentions
-[PARALLEL-DONE]
-```
+TTS must speak only meeting content. Do not speak Slack mentions (`@<ProfileName>`) or the `[PARALLEL-DONE]` marker.
 
 If precise spoken content matters, wrap only that content:
 

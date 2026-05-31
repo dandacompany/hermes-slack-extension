@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import shutil
 from pathlib import Path
 
@@ -50,7 +52,7 @@ class WireupStep(Step):
                 })
 
         # 2) Render channel prompts → staging
-        participant_mentions = [f"- {p['persona_display_name']}"
+        participant_mentions = [f"- @{p['persona_display_name']}"
                                 for p in profs if not p.get("base_app")]
         (staging / "moderator.channel-prompt.txt").write_text(
             P.render_moderator_prompt(participant_mentions), encoding="utf-8")
@@ -65,6 +67,16 @@ class WireupStep(Step):
         dest = skills_dir / "hermes-meeting"
         dest.mkdir(parents=True, exist_ok=True)
         shutil.copy2(_MODERATOR_SKILL, dest / "SKILL.md")
+
+        # 4) Mention-map sidecar: profile display name -> bot user id, so the gateway
+        #    converts `@ProfileName` routing into a real mention that pings that bot
+        #    (auto routing). Read at runtime by slack_meeting_room.load_mention_map().
+        home = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+        mentions = {p["persona_display_name"]: p["bot_user_id"]
+                    for p in profs if p.get("persona_display_name") and p.get("bot_user_id")}
+        mp = home / "hermes-slack-ext" / "meeting_mentions.json"
+        mp.parent.mkdir(parents=True, exist_ok=True)
+        mp.write_text(json.dumps(mentions, ensure_ascii=False, indent=2), encoding="utf-8")
 
         ctx.data["staging_dir"] = str(staging)
         print(f"[wireup] channel prompts staged at: {staging} (apply them to each profile config's channel_prompts)")
