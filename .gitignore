@@ -5,3 +5,8 @@ __pycache__/
 *.pyc
 dist/
 build/
+
+# L3 테스트 전용 시크릿(절대 커밋 금지) — config/bot/app 토큰·채널·유저 id
+.env.test
+.env.test.*
+*.env.test
