@@ -77,3 +77,12 @@ def test_board_then_meeting_exclusion_is_tuple_of_both():
     assert m
     names = set(re.findall(r'"([^"]+)"', m.group(1)))
     assert {"board", "meeting"} <= names
+
+
+def test_board_markers_present_survives_meeting_composition():
+    # board+meeting 합성 후에도 board_markers_present는 True여야 한다
+    # (슬래시 제외가 튜플로 승격돼도 기능 마커 4종은 유지 — doctor 거짓 음성 방지).
+    board = P.apply_board_patch(_SKELETON, _BOARD_FRAG)
+    both = P.apply_meeting_patch(board, _MEETING_FRAG)
+    assert P.board_markers_present(both) is True
+    assert P.meeting_markers_present(both) is True

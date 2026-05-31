@@ -93,9 +93,12 @@ def apply_board_patch(text: str, methods_frag: str) -> str:
 
 
 def board_markers_present(text: str) -> bool:
+    # 기능 마커 4종으로 판정한다. generic-slash 제외(`if name != "board"`)는 meeting
+    # 합성 시 `if name not in ("board", "meeting")`로 승격되어 불안정하므로 체크에서 제외
+    # (제외 동작 자체는 patcher 합성 테스트가 검증).
     return all(m in text for m in (
         "_board_action_locks", '@self._app.command("/board")',
-        "hermes_board_task_create", 'if name != "board"', "async def send_kanban_board",
+        "hermes_board_task_create", "async def send_kanban_board",
     ))
 
 
