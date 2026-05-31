@@ -4,6 +4,8 @@ A CLI install wizard that deterministically adds a **`/board` Kanban board** and
 to the Slack integration of Hermes Agent (0.15.x). It replaces the non-deterministic skill-based approach, so the
 same input always produces the same result. You can step through an interactive TUI prompt by prompt, or run it headless with `--answers-file`.
 
+> **New here?** See **[TUTORIAL.md](TUTORIAL.md)** for a full install-to-usage walkthrough.
+
 ## What it does
 
 - **`/board`** — Idempotently patches a Kanban board Block Kit handler into Hermes's `gateway/platforms/slack.py`
