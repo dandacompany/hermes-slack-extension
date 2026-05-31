@@ -20,6 +20,18 @@ class SlackAdapter:
             # Start Socket Mode handler in background
             self._handler = None
 
+    async def send(self, chat_id, content, reply_to=None, metadata=None):
+        try:
+            last_result = None
+            sent_ts = None
+            return SendResult(
+                success=True,
+                message_id=sent_ts,
+                raw_response=last_result,
+            )
+        except Exception as e:
+            return SendResult(success=False, error=str(e))
+
     async def _handle_slash_confirm_action(self, ack, body, action):
         await ack()
 '''
@@ -36,6 +48,31 @@ def test_meeting_patch_inserts_all_markers():
     assert "send_meeting_room" in out
     assert 'if name not in ("meeting",)' in out or 'name != "meeting"' in out
     assert P.meeting_markers_present(out)
+
+
+def test_meeting_patch_splices_send_controls_hook():
+    # The outbound send() hook must be inserted before send()'s success return so
+    # the Meeting Controls card follows the conversation.
+    out = P.apply_meeting_patch(_SKELETON, _MEETING_FRAG)
+    assert "await self._maybe_post_meeting_controls(chat_id)" in out
+    hook = out.index("await self._maybe_post_meeting_controls(chat_id)")
+    ret = out.index("return SendResult(\n                success=True,", hook)
+    assert ret > hook  # the call precedes the success return
+
+
+def test_meeting_patch_raises_without_send_anchor():
+    # If slack.py's send() success-return shape changes, fail loudly rather than
+    # silently dropping the buttons-on-response hook.
+    skeleton_no_send = _SKELETON.replace(
+        "            return SendResult(\n"
+        "                success=True,\n"
+        "                message_id=sent_ts,\n"
+        "                raw_response=last_result,\n"
+        "            )\n",
+        "            return None\n",
+    )
+    with pytest.raises(P.PatchError):
+        P.apply_meeting_patch(skeleton_no_send, _MEETING_FRAG)
 
 
 def test_meeting_patch_is_idempotent():
@@ -61,12 +98,12 @@ def test_meeting_then_board_also_composes():
     assert '@self._app.command("/board")' in both
     assert '@self._app.command("/meeting")' in both
     assert "send_kanban_board" in both and "send_meeting_room" in both
-    # 두 슬래시 모두 generic catch-all에서 제외돼야 한다(순서 무관 합성).
-    # 그렇지 않으면 /board가 generic+전용으로 이중 디스패치된다.
+    # Both slashes must be excluded from the generic catch-all (order-independent
+    # composition); otherwise /board double-dispatches via generic + dedicated.
     m = re.search(r'if name not in \(([^)]*)\)', both)
-    assert m, "generic-slash 제외가 튜플 형태가 아님 — board가 제외되지 않음"
+    assert m, "generic-slash exclusion is not a tuple — board not excluded"
     names = set(re.findall(r'"([^"]+)"', m.group(1)))
-    assert {"board", "meeting"} <= names, f"제외 집합에 board·meeting 누락: {names}"
+    assert {"board", "meeting"} <= names, f"exclusion set missing board/meeting: {names}"
 
 
 def test_board_then_meeting_exclusion_is_tuple_of_both():
@@ -80,8 +117,9 @@ def test_board_then_meeting_exclusion_is_tuple_of_both():
 
 
 def test_board_markers_present_survives_meeting_composition():
-    # board+meeting 합성 후에도 board_markers_present는 True여야 한다
-    # (슬래시 제외가 튜플로 승격돼도 기능 마커 4종은 유지 — doctor 거짓 음성 방지).
+    # board_markers_present must stay True after board+meeting composition
+    # (the 4 functional markers persist even when the slash exclusion is promoted
+    # to a tuple — prevents a doctor false negative).
     board = P.apply_board_patch(_SKELETON, _BOARD_FRAG)
     both = P.apply_meeting_patch(board, _MEETING_FRAG)
     assert P.board_markers_present(both) is True

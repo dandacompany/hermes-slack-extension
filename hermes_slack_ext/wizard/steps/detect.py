@@ -6,17 +6,17 @@ from hermes_slack_ext.wizard.engine import Step, WizardContext
 
 class DetectStep(Step):
     id = "detect"
-    title = "Hermes 탐지"
+    title = "Detect Hermes"
 
     def apply(self, ctx: WizardContext) -> None:
         root = ctx.hermes_root
         if not hermes.slack_py_path(root).exists():
-            raise FileNotFoundError(f"slack.py를 찾을 수 없음: {hermes.slack_py_path(root)}")
+            raise FileNotFoundError(f"slack.py not found: {hermes.slack_py_path(root)}")
         version = hermes.detect_version(root)
         ctx.data["hermes_version"] = version
         ctx.data["hermes_supported"] = hermes.is_supported(version)
         if not hermes.is_supported(version):
             raise RuntimeError(
-                f"지원하지 않는 Hermes 버전입니다: {version}. "
-                f"지원: {', '.join(hermes.SUPPORTED_VERSIONS)}"
+                f"Unsupported Hermes version: {version}. "
+                f"Supported: {', '.join(hermes.SUPPORTED_VERSIONS)}"
             )

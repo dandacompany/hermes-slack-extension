@@ -6,7 +6,7 @@ import yaml
 
 _MEETING = Path(__file__).resolve().parents[1] / "meeting"
 
-# participant_channel_prompt의 <PLACEHOLDER> → 페르소나 필드 매핑
+# Maps <PLACEHOLDER> tokens in participant_channel_prompt to persona fields.
 _PARTICIPANT_FIELDS = {
     "<PERSONA_NAME>": "persona_display_name",
     "<ROLE_OR_JOB>": "role_job",

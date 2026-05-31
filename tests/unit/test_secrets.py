@@ -25,7 +25,7 @@ def test_write_env_merges_existing_keys(tmp_path):
 
 
 def test_write_env_overwrite_tightens_loose_mode(tmp_path):
-    # 기존 파일이 느슨한 0644여도 원자적 교체 후 최종 0600이어야 한다.
+    # Even if the existing file has a loose 0644 mode, after the atomic replace the final mode must be 0600.
     env = tmp_path / "loose.env"
     env.write_text("SLACK_BOT_TOKEN=old\n")
     os.chmod(env, 0o644)
@@ -35,11 +35,11 @@ def test_write_env_overwrite_tightens_loose_mode(tmp_path):
 
 
 def test_write_env_leaves_no_temp_files(tmp_path):
-    # 원자적 기록의 임시파일(.env.*)이 남지 않아야 한다.
+    # The temp file (.env.*) used for the atomic write must not be left behind.
     env = tmp_path / "p.env"
     Sec.write_env(env, {"SLACK_BOT_TOKEN": "xoxb-1"})
     leftovers = [p.name for p in tmp_path.iterdir() if p.name != "p.env"]
-    assert leftovers == [], f"임시파일 잔여: {leftovers}"
+    assert leftovers == [], f"leftover temp files: {leftovers}"
 
 
 def test_mask_hides_middle():

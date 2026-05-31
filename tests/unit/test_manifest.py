@@ -19,7 +19,7 @@ def _base():
 def test_swap_preserves_count_and_settings():
     out = M.swap_slashes(_base(), drop=["footer"], add=[{"command": "/board", "description": "board"}])
     cmds = [s["command"] for s in out["features"]["slash_commands"]]
-    assert len(cmds) == 50                      # 추가 1 == 제거 1
+    assert len(cmds) == 50                      # 1 added == 1 dropped
     assert "/footer" not in cmds
     assert "/board" in cmds
     assert out["settings"]["socket_mode_enabled"] is True
@@ -30,7 +30,7 @@ def test_swap_added_entry_has_required_shape():
     out = M.swap_slashes(_base(), drop=["footer"], add=[{"command": "/board", "description": "board"}])
     entry = next(s for s in out["features"]["slash_commands"] if s["command"] == "/board")
     assert entry["should_escape"] is False
-    assert entry["url"] == "https://hermes-agent.local/slack/commands"  # 기존 url 재사용
+    assert entry["url"] == "https://hermes-agent.local/slack/commands"  # reuses existing url
 
 
 def test_swap_does_not_duplicate_existing():

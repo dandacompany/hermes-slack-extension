@@ -13,9 +13,9 @@ REAL = Path(os.environ.get("HERMES_ROOT", str(Path.home() / ".hermes/hermes-agen
 
 
 @pytest.mark.skipif(not (REAL / "gateway/platforms/slack.py").exists(),
-                    reason="실 Hermes 체크아웃 없음")
+                    reason="no real Hermes checkout")
 def test_board_step_patches_and_compiles(tmp_path):
-    # 실 slack.py만 임시 root로 복제
+    # copy only the real slack.py into a temporary root
     root = tmp_path / "hermes-agent"
     (root / "gateway/platforms").mkdir(parents=True)
     (root / "tests").mkdir()
@@ -30,6 +30,6 @@ def test_board_step_patches_and_compiles(tmp_path):
     patched = (root / "gateway/platforms/slack.py").read_text()
     assert '@self._app.command("/board")' in patched
     assert (root / "gateway/platforms/slack_kanban_board.py").exists()
-    # py_compile 성공
+    # py_compile succeeds
     subprocess.run([sys.executable, "-m", "py_compile",
                     str(root / "gateway/platforms/slack.py")], check=True)

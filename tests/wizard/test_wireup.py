@@ -26,26 +26,26 @@ def test_wireup_writes_allowed_users_and_skill(tmp_path):
         "profile_env_dir": str(envs), "skills_dir": str(skills_dir),
         "staging_dir": str(tmp_path / "staging"),
     })
-    # researcher env_path 보정
+    # fix up researcher env_path
     ctx.data["profiles"][1]["env_path"] = str(envs / "researcher.env")
     W.WireupStep().apply(ctx)
 
     env = (envs / "researcher.env").read_text()
     assert "SLACK_ALLOW_BOTS=mentions" in env
-    assert "Uhuman" in env and "Bmod" in env and "Bp1" in env   # allowed_users에 모든 봇
-    # moderator 스킬 설치됨
+    assert "Uhuman" in env and "Bmod" in env and "Bp1" in env   # all bots in allowed_users
+    # moderator skill is installed
     assert (skills_dir / "hermes-meeting" / "SKILL.md").exists()
-    # 채널 프롬프트 스테이징
+    # channel prompt staging
     assert (Path(ctx.data["staging_dir"]) / "researcher.channel-prompt.txt").exists()
 
 
 def test_wireup_pulls_moderator_bot_from_ctx(tmp_path):
-    # 모더레이터 프로필에 bot_user_id가 없을 때(실제 기본 흐름), ctx의
-    # moderator_bot_user_id가 allowed_users에 들어가야 한다(C1 회귀 가드).
+    # when the moderator profile has no bot_user_id (the real default flow),
+    # ctx's moderator_bot_user_id must end up in allowed_users (C1 regression guard).
     envs = tmp_path / "envs"; envs.mkdir()
     (envs / "researcher.env").write_text("SLACK_BOT_TOKEN=x\n")
     profs = _profiles()
-    del profs[0]["bot_user_id"]  # 모더레이터는 캡처 경로가 없어 비어 있음
+    del profs[0]["bot_user_id"]  # moderator has no capture path, so it is empty
     ctx = WizardContext(hermes_root=tmp_path)
     ctx.data.update({
         "features": ["meeting"], "profiles": profs,
@@ -58,5 +58,5 @@ def test_wireup_pulls_moderator_bot_from_ctx(tmp_path):
 
     env = (envs / "researcher.env").read_text()
     assert "Bmod2" in env and "Bp1" in env and "Uhuman" in env
-    # 모더레이터 프로필에도 보충됨
+    # also backfilled into the moderator profile
     assert profs[0]["bot_user_id"] == "Bmod2"

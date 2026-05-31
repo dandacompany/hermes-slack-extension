@@ -12,7 +12,7 @@ _OVERLAY = Path(__file__).resolve().parents[2] / "overlays"
 
 class BoardStep(Step):
     id = "board"
-    title = "보드 설치"
+    title = "Install board"
 
     def should_run(self, ctx: WizardContext) -> bool:
         return "board" in ctx.data.get("features", [])
@@ -27,8 +27,9 @@ class BoardStep(Step):
             "gateway/platforms/slack_kanban_board.py",
             "tests/test_slack_kanban_board.py",
         ]
-        # slack.py는 *패치 전(클린)* 상태일 때만 백업한다. 이미 패치된 파일을 백업하면
-        # uninstall이 패치 버전을 "복원"해 원복이 무력화된다(클린 백업 보존이 불변식).
+        # Back up slack.py only when it is in the *pre-patch (clean)* state. Backing up an
+        # already-patched file would let uninstall "restore" the patched version, defeating
+        # the rollback (preserving the clean backup is an invariant).
         if not (patcher.board_markers_present(text) or patcher.meeting_markers_present(text)):
             rels.insert(0, "gateway/platforms/slack.py")
         backups.backup_files(root, rels, backup_root)

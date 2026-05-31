@@ -50,7 +50,7 @@ def _build_steps():
     ]
 
 
-# 원복(uninstall)용 메타. 시크릿(토큰) 절대 미포함.
+# Metadata for uninstall. Never includes secrets (tokens).
 _RECORD_KEYS = (
     "features", "created_app_ids", "base_app_id", "slash_dropped",
     "backup_root", "profile_env_dir", "skills_dir", "staging_dir",
@@ -61,7 +61,7 @@ def _record_install(state: WizardState, ctx: WizardContext) -> None:
     record = dict(state.data.get("install_record", {}))
     for key in _RECORD_KEYS:
         val = ctx.data.get(key)
-        # 재개 실행에서 빈 값이 기존 비어있지 않은 기록을 덮어쓰지 않도록 merge.
+        # Merge so a resumed run's empty value can't overwrite an existing non-empty record.
         if val in (None, [], "", {}) and record.get(key) not in (None, [], "", {}):
             continue
         if val is not None:
@@ -83,26 +83,26 @@ def install(
     ctx = WizardContext(hermes_root=root, non_interactive=non_interactive, dry_run=dry_run)
 
     if non_interactive and not answers_file:
-        raise typer.BadParameter("--non-interactive 는 --answers-file 과 함께 사용하세요.")
+        raise typer.BadParameter("--non-interactive must be used together with --answers-file.")
 
     if answers_file:
         answers = yaml.safe_load(Path(answers_file).read_text()) or {}
-        # 비-프롬프트 값은 ctx.data로 직접 주입
+        # Inject non-prompt values directly into ctx.data.
         for k in ("manifest_out", "moderator_name", "backup_root", "base_app_id",
                   "channel_id", "human_user_id", "moderator_bot_user_id",
                   "profile_env_dir", "skills_dir", "staging_dir", "participant_app_ids"):
             if k in answers:
                 ctx.data[k] = answers[k]
-        # 프롬프트 키는 ScriptedPrompts로. features는 checkbox가 리스트 전체를
-        # 한 번에 반환하므로 한 번의 dequeue로 전체 리스트가 나오도록 이중 래핑.
+        # Prompt keys go through ScriptedPrompts. The features checkbox returns the
+        # whole list at once, so double-wrap it to yield the full list in a single dequeue.
         scripted: dict = {}
         if "features" in answers:
             scripted["features"] = [answers["features"]]
-        # 미팅 프롬프트 키(스칼라) — ScriptedPrompts가 스칼라를 [v]로 감싸므로 그대로 전달
+        # Meeting prompt keys (scalars) — ScriptedPrompts wraps a scalar as [v], so pass them as-is.
         for k in ("profile_mode", "profile_count", "config_token", "refresh_token"):
             if k in answers:
                 scripted[k] = answers[k]
-        # 참가자 토큰/프리셋 키(<pid>_bot_token / <pid>_app_token / preset_N / <pid>_<field>)
+        # Participant token/preset keys (<pid>_bot_token / <pid>_app_token / preset_N / <pid>_<field>).
         for k, v in answers.items():
             if k.endswith(("_bot_token", "_app_token")) or k.startswith("preset_"):
                 scripted[k] = v
@@ -116,9 +116,9 @@ def install(
     if not dry_run:
         _record_install(state, ctx)
     if dry_run:
-        typer.echo("드라이런 완료 — 실제 변경 없음.")
+        typer.echo("Dry run complete — no changes were made.")
     else:
-        typer.echo("설치 완료. 게이트웨이를 재시작하세요: hermes gateway restart")
+        typer.echo("Install complete. Restart the gateway: hermes gateway restart")
 
 
 @app.command()
@@ -128,62 +128,62 @@ def uninstall(
     dry_run: bool = typer.Option(False, "--dry-run"),
     yes: bool = typer.Option(False, "--yes"),
     delete_apps: bool = typer.Option(False, "--delete-apps",
-                                     help="생성된 참가자 Slack 앱을 apps.manifest.delete로 삭제"),
+                                     help="Delete the created participant Slack apps via apps.manifest.delete"),
     non_interactive: bool = typer.Option(False, "--non-interactive"),
 ) -> None:
-    """설치 역연산: slack.py 복원(언패치)·오버레이 제거·미팅 산출물 정리·(옵션)생성 앱 삭제."""
+    """Reverse the install: restore slack.py (unpatch), remove overlays, clean up meeting artifacts, and (optionally) delete created apps."""
     root = Path(hermes_root).expanduser().resolve()
     diag = teardown.diagnose(root, state_dir)
     record = teardown.load_record(state_dir)
     home = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
 
-    typer.echo("원복 계획:")
-    typer.echo(f"  - slack.py 복원(백업): {'있음' if diag['backup_present'] else '없음(수동 필요)'} @ {diag['backup_root']}")
-    typer.echo(f"  - 오버레이 삭제: {diag['overlays_present'] or '없음'}")
+    typer.echo("Uninstall plan:")
+    typer.echo(f"  - Restore slack.py (from backup): {'present' if diag['backup_present'] else 'missing (manual restore needed)'} @ {diag['backup_root']}")
+    typer.echo(f"  - Remove overlays: {diag['overlays_present'] or 'none'}")
     if diag["created_app_ids"]:
-        action = "삭제" if delete_apps else "보존(--delete-apps로 삭제)"
-        typer.echo(f"  - 생성 앱 {len(diag['created_app_ids'])}개: {action}")
+        action = "delete" if delete_apps else "keep (use --delete-apps to delete)"
+        typer.echo(f"  - Created apps: {len(diag['created_app_ids'])}: {action}")
     if dry_run:
         plan = teardown.restore_slack_py(root, diag["backup_root"], dry_run=True)
-        typer.echo(f"  [dry-run] 복원 예정 {len(plan)}개, "
-                   f"오버레이 {len(teardown.remove_overlays(root, dry_run=True))}개")
-        typer.echo("드라이런 — 실제 변경 없음.")
+        typer.echo(f"  [dry-run] {len(plan)} file(s) to restore, "
+                   f"{len(teardown.remove_overlays(root, dry_run=True))} overlay(s)")
+        typer.echo("Dry run — no changes were made.")
         return
 
     if not yes and not non_interactive:
-        typer.confirm("위 계획대로 원복할까요?", abort=True)
+        typer.confirm("Proceed with the uninstall plan above?", abort=True)
 
     if diag["backup_present"]:
         teardown.restore_slack_py(root, diag["backup_root"])
-        typer.echo("  slack.py 복원 완료.")
+        typer.echo("  slack.py restored.")
     else:
-        typer.echo("  백업이 없어 slack.py를 자동 복원하지 못했습니다(마커 수동 제거 필요).")
+        typer.echo("  No backup found, so slack.py could not be restored automatically (remove the markers manually).")
     removed = teardown.remove_overlays(root)
-    typer.echo(f"  오버레이 {len(removed)}개 삭제.")
+    typer.echo(f"  {len(removed)} overlay(s) removed.")
     cleaned = teardown.cleanup_artifacts(record, home)
-    typer.echo(f"  산출물 {len(cleaned)}개 정리.")
+    typer.echo(f"  {len(cleaned)} artifact(s) cleaned up.")
 
     if delete_apps and diag["created_app_ids"]:
         token = os.environ.get("HSE_CONFIG_TOKEN", "")
         if not token and not non_interactive:
             token = typer.prompt("App Configuration Token (xoxe-...)", hide_input=True)
         if not token:
-            typer.echo("  config 토큰이 없어 생성 앱 삭제를 건너뜁니다. "
-                       "수동 삭제 대상 app_id: " + ", ".join(diag["created_app_ids"]))
+            typer.echo("  No config token, so skipping deletion of created apps. "
+                       "app_id(s) to delete manually: " + ", ".join(diag["created_app_ids"]))
         else:
             for app_id in diag["created_app_ids"]:
                 try:
                     slack_api.delete_app(token, app_id)
-                    typer.echo(f"  앱 삭제: {app_id}")
+                    typer.echo(f"  App deleted: {app_id}")
                 except slack_api.SlackAPIError as exc:
-                    typer.echo(f"  앱 삭제 실패({app_id}): {exc.error}")
+                    typer.echo(f"  App deletion failed ({app_id}): {exc.error}")
 
     sp = Path(state_dir) / "state.json"
     if sp.exists():
         raw = json.loads(sp.read_text(encoding="utf-8"))
         raw.setdefault("data", {})["uninstalled"] = True
         sp.write_text(json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8")
-    typer.echo("원복 완료. 게이트웨이를 재시작하세요: hermes gateway restart")
+    typer.echo("Uninstall complete. Restart the gateway: hermes gateway restart")
 
 
 @app.command()
@@ -191,25 +191,25 @@ def doctor(
     hermes_root: str = typer.Option(str(Path.home() / ".hermes/hermes-agent"), "--hermes-root"),
     state_dir: str = typer.Option(str(Path.home() / ".hermes/hermes-slack-ext"), "--state-dir"),
 ) -> None:
-    """설치 상태 진단(패치 적용·오버레이·백업·기록)."""
+    """Diagnose the install state (patches applied, overlays, backup, record)."""
     root = Path(hermes_root).expanduser().resolve()
     d = teardown.diagnose(root, state_dir)
 
     def _mark(b: bool) -> str:
         return "✓" if b else "✗"
 
-    typer.echo(f"Hermes: {d['hermes_root']} (version: {d['version'] or '미상'})")
+    typer.echo(f"Hermes: {d['hermes_root']} (version: {d['version'] or 'unknown'})")
     typer.echo(f"  slack.py present : {_mark(d['slack_py_exists'])}")
     typer.echo(f"  board patched    : {_mark(d['board_patched'])}")
     typer.echo(f"  meeting patched  : {_mark(d['meeting_patched'])}")
-    typer.echo(f"  overlays         : {d['overlays_present'] or '없음'}")
+    typer.echo(f"  overlays         : {d['overlays_present'] or 'none'}")
     typer.echo(f"  backup available : {_mark(d['backup_present'])} @ {d['backup_root']}")
     typer.echo(f"  install record   : {_mark(d['has_record'])}"
                f" (features={d['features']}, dropped={d['slash_dropped']})")
-    typer.echo(f"  created apps     : {len(d['created_app_ids'])}개")
+    typer.echo(f"  created apps     : {len(d['created_app_ids'])}")
     if not d["has_record"] and (d["board_patched"] or d["meeting_patched"]):
-        typer.echo("  ⚠ 패치는 적용됐으나 install record가 없습니다 — "
-                   "uninstall은 백업/마커 기반으로만 동작(생성 앱 자동삭제 불가).")
+        typer.echo("  ⚠ Patches are applied but there is no install record — "
+                   "uninstall will work from the backup/markers only (created apps can't be auto-deleted).")
 
 
 if __name__ == "__main__":

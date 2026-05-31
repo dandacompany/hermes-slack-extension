@@ -9,15 +9,15 @@ from hermes_slack_ext.core.hermes import venv_python
 
 _DEFAULT_URL = "https://hermes-agent.local/slack/commands"
 
-# 추가할 슬래시 엔트리(스펙 부록 A.3)
+# Slash command entries to add (spec appendix A.3).
 BOARD_ENTRY = {"command": "/board", "description": "Open the Kanban board UI",
                "usage_hint": "[-p project] [-s status]"}
 MEETING_ENTRY = {"command": "/meeting", "description": "Open the meeting room UI",
                  "usage_hint": "[topic]"}
-# 기능별 기본 drop (스펙 §8.1)
+# Default command to drop per feature (spec §8.1).
 DEFAULT_DROP = {"board": "footer", "meeting": "sethome"}
 
-# 참가자 최소 봇 스코프(스펙 부록 A.4)
+# Minimal bot scopes for a participant app (spec appendix A.4).
 _PARTICIPANT_SCOPES = [
     "app_mentions:read", "chat:write", "channels:history", "channels:read",
     "groups:history", "im:history", "users:read", "files:write",
@@ -47,8 +47,8 @@ def swap_slashes(manifest: dict, drop: list[str], add: list[dict]) -> dict:
     removed = len(slashes) - len(kept)
     if add and removed < len(add):
         raise ValueError(
-            f"슬래시 예산 위반: 추가 {len(add)}개 대비 제거 {removed}개. "
-            f"drop 대상 {drop} 중 일부가 매니페스트에 없습니다."
+            f"Slash command budget exceeded: adding {len(add)} but only removing {removed}. "
+            f"Some of the drop targets {drop} are not present in the manifest."
         )
     for entry in add:
         full = {"should_escape": False, "url": url, **entry}

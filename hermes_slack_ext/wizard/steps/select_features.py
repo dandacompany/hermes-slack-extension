@@ -8,10 +8,10 @@ ALL_FEATURES = ["board", "meeting", "tts"]
 
 class SelectFeaturesStep(Step):
     id = "select_features"
-    title = "기능 선택"
+    title = "Select features"
 
     def prompt(self, ctx: WizardContext, prompts: Prompts) -> None:
         chosen = prompts.checkbox(
-            "features", "설치할 기능을 선택", ALL_FEATURES, default=["board", "meeting"]
+            "features", "Select the features to install", ALL_FEATURES, default=["board", "meeting"]
         )
         ctx.data["features"] = list(chosen)

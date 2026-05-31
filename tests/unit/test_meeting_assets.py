@@ -22,7 +22,7 @@ def test_default_profiles_reference_existing_presets():
     cat_ids = {p["id"] for p in _load("business-persona-presets.yaml")["persona_catalog"]}
     defaults = _load("default_profiles.yaml")["default_profiles"]
     assert len(defaults) == 4
-    assert sum(1 for d in defaults if d.get("base_app")) == 1  # moderator만 base_app
+    assert sum(1 for d in defaults if d.get("base_app")) == 1  # only the moderator is base_app
     for d in defaults:
         assert d["preset"] in cat_ids, f"{d['preset']} not in preset catalog"
 

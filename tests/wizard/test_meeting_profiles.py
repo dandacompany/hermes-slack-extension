@@ -15,13 +15,13 @@ def test_skips_when_no_meeting(tmp_path):
 
 def test_default_accept_yields_four_profiles(tmp_path):
     ctx = _ctx(tmp_path, ["meeting"])
-    # "default" 경로: 기본 4세트 그대로 수용
+    # "default" path: accept the default set of 4 as-is
     prompts = ScriptedPrompts({"profile_mode": ["default"]})
     MeetingProfilesStep().prompt(ctx, prompts)
     profiles = ctx.data["profiles"]
     assert len(profiles) == 4
     assert sum(1 for p in profiles if p["base_app"]) == 1
-    # 각 프로필은 페르소나 필드를 갖는다(프리셋에서 채워짐)
+    # each profile has persona fields (filled in from the preset)
     assert all("persona_display_name" in p for p in profiles)
 
 
@@ -34,7 +34,7 @@ def test_default_profiles_have_aligned_names(tmp_path):
 
 
 def test_preset_mode_dedupes_colliding_ids(tmp_path):
-    # 같은 프리셋을 두 번 고르면 profile_id 충돌 → _2 접미사로 분리(.env 덮어쓰기 방지).
+    # choosing the same preset twice causes a profile_id collision -> disambiguate with a _2 suffix (prevents .env overwrite).
     ctx = _ctx(tmp_path, ["meeting"])
     prompts = ScriptedPrompts({
         "profile_mode": ["preset"], "profile_count": ["2"],

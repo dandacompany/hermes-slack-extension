@@ -13,7 +13,7 @@ class SlackConfigTokenStep(Step):
         return "meeting" in ctx.data.get("features", [])
 
     def prompt(self, ctx: WizardContext, prompts: Prompts) -> None:
-        # api.slack.com/apps → "Your App Configuration Tokens"에서 발급. password로 받아 미출력.
+        # Generated at api.slack.com/apps → "Your App Configuration Tokens". Read as a password so it is not echoed.
         token = prompts.password("config_token", "App Configuration Token (xoxe-...)")
         refresh = prompts.password("refresh_token", "Configuration Refresh Token (xoxe-1-...)")
         ctx.data["config_token"] = token
@@ -21,24 +21,26 @@ class SlackConfigTokenStep(Step):
         self._collect_context(ctx, prompts)
 
     def _collect_context(self, ctx: WizardContext, prompts: Prompts) -> None:
-        """회의 컨텍스트(비밀 아닌 공개 id)를 수집한다. 헤드리스(non_interactive)는
-        --answers-file 주입에 의존하므로 프롬프트를 건너뛰고, 대화형에서만 누락된 값을
-        묻는다. moderator_bot_user_id는 베이스 Hermes 앱(모더레이터)의 Bot User ID로,
-        allowed_users에 포함되어야 모더레이터→참가자 멘션 라우팅이 동작한다."""
+        """Collect meeting context (non-secret, public ids). Headless mode
+        (non_interactive) relies on --answers-file injection, so prompts are
+        skipped; only the interactive flow asks for missing values.
+        moderator_bot_user_id is the Bot User ID of the base Hermes app (the
+        moderator); it must be included in allowed_users for moderator→participant
+        mention routing to work."""
         if ctx.non_interactive:
             return
         if not ctx.data.get("channel_id"):
             ctx.data["channel_id"] = prompts.text(
-                "channel_id", "회의 채널 ID (Cxxxxxxxx)", default="")
+                "channel_id", "Meeting channel ID (Cxxxxxxxx)", default="")
         if not ctx.data.get("human_user_id"):
             ctx.data["human_user_id"] = prompts.text(
-                "human_user_id", "당신의 Slack User ID (Uxxxxxxxx)", default="")
+                "human_user_id", "Your Slack User ID (Uxxxxxxxx)", default="")
         if not ctx.data.get("moderator_bot_user_id"):
             ctx.data["moderator_bot_user_id"] = prompts.text(
                 "moderator_bot_user_id",
-                "모더레이터(베이스 Hermes 앱) Bot User ID (Uxxxxxxxx)", default="")
+                "Moderator (base Hermes app) Bot User ID (Uxxxxxxxx)", default="")
 
     def apply(self, ctx: WizardContext) -> None:
-        # 마스킹된 확인만 출력(값 노출 금지). 실제 유효성은 slack_apps 단계의 첫 호출에서 확인.
+        # Print only a masked confirmation (never expose the value). Actual validity is checked on the first call in the slack_apps step.
         masked = secrets.mask(ctx.data.get("config_token", ""))
-        print(f"[config token] 등록됨: {masked}")
+        print(f"[config token] registered: {masked}")

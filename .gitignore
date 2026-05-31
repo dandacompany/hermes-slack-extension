@@ -6,7 +6,21 @@ __pycache__/
 dist/
 build/
 
-# L3 테스트 전용 시크릿(절대 커밋 금지) — config/bot/app 토큰·채널·유저 id
+# L3 test-only secrets (never commit) — config/bot/app tokens, channel & user ids
 .env.test
 .env.test.*
 *.env.test
+
+# Local-only dev/agent artifacts — kept local, not part of the end-user project.
+# Removed from history; ignored so they are never re-tracked.
+docs/
+.claude/
+.agents/
+.agent/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.cursor/
+.windsurf/
+.mcp.json
+.aider*

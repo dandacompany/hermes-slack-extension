@@ -9,7 +9,7 @@ from hermes_slack_ext.wizard.engine import Step, WizardContext
 
 class SlashSwapStep(Step):
     id = "slash_swap"
-    title = "슬래시 스왑"
+    title = "Slash command swap"
 
     def should_run(self, ctx: WizardContext) -> bool:
         return bool(set(ctx.data.get("features", [])) & {"board", "meeting"})

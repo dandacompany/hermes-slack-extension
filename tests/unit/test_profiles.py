@@ -32,7 +32,7 @@ def test_build_allowed_users_includes_all_bots():
 
 
 def test_build_allowed_users_drops_empty_and_dupes():
-    # 빈 human → leading comma 없이, 중복 봇은 1회만.
+    # Empty human -> no leading comma; duplicate bots appear only once.
     val = P.build_allowed_users("", ["Bmod", "", "Bp1", "Bmod"])
     assert val == "Bmod,Bp1"
     assert not val.startswith(",")

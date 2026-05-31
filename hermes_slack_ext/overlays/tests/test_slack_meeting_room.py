@@ -13,7 +13,7 @@ try:
 except Exception:
     _LOADED = False
 
-pytestmark = pytest.mark.skipif(not _LOADED, reason="slack_meeting_room import 실패")
+pytestmark = pytest.mark.skipif(not _LOADED, reason="slack_meeting_room import failed")
 
 
 def _store_path(tmp_path, monkeypatch):
@@ -39,7 +39,7 @@ def test_create_meeting_sets_fields_and_thread_id(tmp_path, monkeypatch):
     )
     m = mr.get_meeting(store, mid)
     assert mid == "mtg-x"
-    assert m["session_thread_id"] == ""   # 런타임에 실제 Slack ts로 설정됨
+    assert m["session_thread_id"] == ""   # set to a real Slack ts at runtime
     assert m["status"] == "setup"
     assert m["participants"] == ["Researcher", "Designer"]
     assert m["routing_mode"] == "manual"
@@ -108,14 +108,14 @@ def _meeting():
 
 def test_build_start_prompt_follows_contract():
     text = mr.build_start_prompt(_meeting())
-    assert not text.startswith("/")          # 선행 슬래시 금지(게이트웨이 명령 오분류 방지)
+    assert not text.startswith("/")          # no leading slash (avoid gateway command misclassification)
     assert "YT 기획" in text
-    assert "참석자: Researcher, Designer" in text
-    assert "턴수: 4턴" in text
-    assert "진행: mixed" in text
-    assert "진행 제어: auto" in text
-    assert "음성: voice-summary" in text
-    assert "전용 meeting 세션" in text
+    assert "Participants: Researcher, Designer" in text
+    assert "Turns: 4" in text
+    assert "Mode: mixed" in text
+    assert "Routing: auto" in text
+    assert "Voice: voice-summary" in text
+    assert "dedicated meeting session" in text
 
 
 def test_build_continue_and_next_and_end():
@@ -123,7 +123,7 @@ def test_build_continue_and_next_and_end():
     assert "follow up" in mr.build_continue_prompt(m, "follow up")
     nxt = mr.build_next_prompt(m, "Researcher")
     assert "Researcher" in nxt
-    assert "종료" in mr.build_end_prompt(m) or "finaliz" in mr.build_end_prompt(m).lower()
+    assert "finaliz" in mr.build_end_prompt(m).lower()
 
 
 def test_room_blocks_have_header_and_primary_actions(tmp_path, monkeypatch):
@@ -138,16 +138,61 @@ def test_room_blocks_have_header_and_primary_actions(tmp_path, monkeypatch):
     assert f"{mr.ACTION_PREFIX}refresh" in ids
 
 
+def _card_action_ids(blocks):
+    return [e["action_id"] for b in blocks if b["type"] == "actions" for e in b["elements"]]
+
+
+def _card_labels(blocks):
+    return [e["text"]["text"] for b in blocks if b["type"] == "actions" for e in b["elements"]]
+
+
+def test_build_meeting_card_blocks_has_inline_actions():
+    m = {"id": "mtg-x", "channel_id": "C1", "user_id": "U1", "title": "YT 기획",
+         "participants": ["Researcher", "Designer"], "status": "setup",
+         "routing_mode": "manual", "session_thread_id": ""}
+    fallback, blocks = mr.build_meeting_card_blocks(m)
+    assert "Meeting Controls" in fallback and "YT 기획" in fallback
+    ids = _card_action_ids(blocks)
+    assert f"{mr.ACTION_PREFIX}start" in ids
+    assert f"{mr.ACTION_PREFIX}continue_open" in ids
+    assert f"{mr.ACTION_PREFIX}end" in ids
+
+
+def test_meeting_control_elements_are_status_aware():
+    base = {"id": "m", "participants": ["Researcher", "Designer"], "routing_mode": "manual"}
+    # setup -> Start
+    setup = mr.meeting_control_elements({**base, "status": "setup"})
+    assert "Start" in _card_labels(setup)
+    assert f"{mr.ACTION_PREFIX}next" not in _card_action_ids(setup)  # no Next before the meeting starts
+    # review -> Approve (still the start action)
+    review = mr.meeting_control_elements({**base, "status": "review"})
+    assert "Approve" in _card_labels(review)
+    assert f"{mr.ACTION_PREFIX}start" in _card_action_ids(review)
+    # active -> no Start/Approve; Next buttons when manual
+    active = mr.meeting_control_elements({**base, "status": "active"})
+    assert f"{mr.ACTION_PREFIX}start" not in _card_action_ids(active)
+    assert f"{mr.ACTION_PREFIX}next" in _card_action_ids(active)
+    # ended -> no buttons
+    assert mr.meeting_control_elements({**base, "status": "ended"}) == []
+
+
+def test_build_approve_prompt_signals_approval_not_redraft():
+    auto = mr.build_approve_prompt({"routing_mode": "auto"})
+    assert "Approved" in auto and "Do not print the setup draft again" in auto and "auto" in auto
+    manual = mr.build_approve_prompt({"routing_mode": "manual"})
+    assert "manual" in manual
+
+
 def test_room_blocks_render_meeting_rows_with_actions(tmp_path, monkeypatch):
     _store_path(tmp_path, monkeypatch)
+    # An active manual meeting exposes Continue/End plus per-participant Next.
     store = {"version": 1, "meetings": {
         "mtg-x": {"id": "mtg-x", "channel_id": "C1", "user_id": "U1", "title": "YT",
-                  "participants": ["Researcher"], "status": "setup",
-                  "routing_mode": "manual", "session_thread_id": "meeting:C1:mtg-x"}},
+                  "participants": ["Researcher"], "status": "active",
+                  "routing_mode": "manual", "session_thread_id": ""}},
         "current": {}}
     _f, blocks = mr.build_meeting_room_blocks(store, "C1")
     ids = [e["action_id"] for b in blocks if b["type"] == "actions" for e in b["elements"]]
-    assert f"{mr.ACTION_PREFIX}start" in ids
     assert f"{mr.ACTION_PREFIX}continue_open" in ids
     assert f"{mr.ACTION_PREFIX}end" in ids
     assert f"{mr.ACTION_PREFIX}next" in ids

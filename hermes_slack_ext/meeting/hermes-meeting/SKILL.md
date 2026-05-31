@@ -24,28 +24,36 @@ Do not start by mentioning participants. First confirm:
 - Anti-convergence rule
 - Finish condition
 
+Render all user-facing meeting text — the setup draft labels below, routing
+phrases, summaries, and the closing line — in the language of the meeting topic
+and participants (for example, Korean for a Korean-language meeting). The labels
+below are an English template; translate them into the meeting language.
+
 Use:
 
 ```text
-회의 설정 초안
-제목: ...
-목표/산출물: ...
-참여자: ...
-턴수: ...
-진행: ...
-진행 제어: auto | manual
-음성: ...
-개입: ...
-합의 품질: ...
-종료 조건: ...
+Meeting setup draft
+Title: ...
+Goal / output: ...
+Participants: ...
+Turns: ...
+Mode: ...
+Routing: auto | manual
+Voice: ...
+Intervention: ...
+Consensus quality: ...
+Finish condition: ...
 
-이 설정으로 시작할까요?
-Slack Block Kit `/meeting` UI가 설치된 환경에서는 사용자가 UI의 `시작` 버튼으로 승인한다고 안내한다.
-이후 사용자의 `이어쓰기`와 `종료`도 `/meeting` UI 액션으로 받으며, 일반 `@<moderator> ...` 멘션은 meeting 세션으로 간주하지 않는다.
+Shall we start with this setup?
 ```
 
+When the Slack Block Kit `/meeting` UI is installed, the user approves via the
+channel _Meeting Controls_ card buttons (Start, then Approve), not by typing.
+Continue/End and next-speaker selection also arrive through those buttons. Normal
+`@<moderator> ...` mentions are not treated as a meeting session.
+
 Only start when the user clearly approves.
-If a message arrives through the dedicated `/meeting` UI session after a setup draft, treat it as continuation of the pending meeting session. If the message is an approval such as `시작`, start the meeting from the existing state. Do not treat normal `@<moderator> ...` Slack mentions as meeting continuation when Block Kit meeting UI is installed.
+If a message arrives through the dedicated `/meeting` UI session after a setup draft, treat it as continuation of the pending meeting session. If the message is an approval (such as the one sent by the Approve button), start the meeting from the existing state and do not reprint the setup draft. Do not treat normal `@<moderator> ...` Slack mentions as meeting continuation when Block Kit meeting UI is installed.
 
 If routing control is `auto`, immediately route one next speaker. If routing control is `manual`, do not route the next participant automatically; wait until the user selects the next speaker in the `/meeting` UI.
 
@@ -77,7 +85,7 @@ Only the moderator assigns speaking turns. If the user speaks, pause routing and
 Slack routing rule:
 
 - Every routed turn must target only one selected profile.
-- Use the visible profile name in routing text, such as `<PARTICIPANT_NAME> 1턴입니다.` The gateway may convert that line to the real Slack mention internally.
+- Use the visible profile name in routing text, such as `<PARTICIPANT_NAME>, your turn (1 turn).` (render the phrase in the meeting language). The gateway may convert that line to the real Slack mention internally.
 - Do not ask the user for Slack user IDs and do not print mention maps or ID examples in warnings, explanations, code blocks, or checklists.
 - Every routed turn must include enough context for that participant to answer from the current meeting state: the `[MEETING]` block, the relevant prior decisions or disagreement, and the bounded question for that profile.
 - In sequential handoff, participants use the visible moderator mention form `handoff: @<MODERATOR_NAME>`, replacing `<MODERATOR_NAME>` with the moderator shown in the meeting state or routing prompt.
@@ -93,7 +101,7 @@ Sequential mode:
 Parallel mode:
 
 - Mention multiple participants once.
-- Include: `병렬 응답: 서로를 멘션하지 말고, 끝에 handoff를 쓰지 말고, [PARALLEL-DONE]으로 끝내세요.`
+- Include this instruction (phrased in the meeting language): for parallel replies, do not mention each other, do not add a handoff at the end, and finish with `[PARALLEL-DONE]`.
 - Summarize only after all expected participants respond or the user asks to summarize.
 - If a participant is missing, mark them as missing. Do not invent their position.
 
@@ -148,11 +156,11 @@ Then:
 ## Voice Modes
 
 - `text-only`: no voice-specific formatting.
-- `voice-summary`: participant adds one final `음성 요약:` sentence.
-- `voice-full`: participant writes 2-4 natural spoken Korean sentences.
+- `voice-summary`: participant adds one final "voice summary:" sentence (label rendered in the meeting language).
+- `voice-full`: participant writes 2-4 natural spoken sentences in the meeting language.
 - `hybrid`: moderator states which turns are spoken.
 
-For any voice mode except `text-only`, wrap the exact speakable Korean in `[TTS]...[/TTS]`.
+For any voice mode except `text-only`, wrap the exact speakable text (in the meeting language) in `[TTS]...[/TTS]`.
 Use `[TTS]` for only the summary sentence in `voice-summary`, and for only the spoken answer in `voice-full`.
 Keep routing state, Slack mentions, handoff markers, and control metadata outside `[TTS]`.
 For Slack file uploads, prefer MP3 output by default. Do not configure command TTS as `voice_compatible: true` unless the target platform explicitly requires Opus voice bubbles, because that setting can convert MP3 into OGG.
@@ -185,4 +193,4 @@ At the final turn, mention no participant. End with:
 - Decision or synthesis
 - Open questions
 - Next actions
-- `회의 종료`
+- A closing line such as "Meeting closed" (rendered in the meeting language)

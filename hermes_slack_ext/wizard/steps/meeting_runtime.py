@@ -14,7 +14,7 @@ _OVERLAY = Path(__file__).resolve().parents[2] / "overlays"
 
 class MeetingRuntimeStep(Step):
     id = "meeting_runtime"
-    title = "미팅 Block Kit 런타임 패치"
+    title = "Patch meeting Block Kit runtime"
 
     def should_run(self, ctx: WizardContext) -> bool:
         return "meeting" in ctx.data.get("features", [])
@@ -27,16 +27,16 @@ class MeetingRuntimeStep(Step):
         text = slack_py.read_text(encoding="utf-8")
         rels = ["gateway/platforms/slack_meeting_room.py",
                 "tests/test_slack_meeting_room.py"]
-        # slack.py는 *패치 전(클린)* 상태일 때만 백업한다(클린 백업 보존 불변식 — 보드 스텝과 동일).
+        # Back up slack.py only when it is in the *pre-patch (clean)* state (clean-backup preservation invariant — same as the board step).
         if not (patcher.board_markers_present(text) or patcher.meeting_markers_present(text)):
             rels.insert(0, "gateway/platforms/slack.py")
         backups.backup_files(root, rels, backup_root)
 
-        # 1) slack.py 미팅 패치 (보드와 합성·멱등)
+        # 1) slack.py meeting patch (composes with the board patch, idempotent)
         frag = (_OVERLAY / "gateway/platforms/slack_meeting_methods.pyfrag").read_text(encoding="utf-8")
         slack_py.write_text(patcher.apply_meeting_patch(text, frag), encoding="utf-8")
 
-        # 2) 오버레이 모듈 복사
+        # 2) Copy overlay modules
         shutil.copy2(_OVERLAY / "gateway/platforms/slack_meeting_room.py",
                      root / "gateway/platforms/slack_meeting_room.py")
         test_src = _OVERLAY / "tests/test_slack_meeting_room.py"
@@ -44,7 +44,7 @@ class MeetingRuntimeStep(Step):
             (root / "tests").mkdir(parents=True, exist_ok=True)
             shutil.copy2(test_src, root / "tests/test_slack_meeting_room.py")
 
-        # 3) 참가자 사이드카 기록(모더레이터=base_app 제외) — 모달 multi-select 옵션 소스
+        # 3) Write the participant sidecar (excluding the moderator = base_app) — source for the modal multi-select options
         names = [p.get("persona_display_name", p.get("profile_id", ""))
                  for p in ctx.data.get("profiles", []) if not p.get("base_app")]
         home = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))

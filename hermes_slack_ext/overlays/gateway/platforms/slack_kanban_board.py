@@ -1366,7 +1366,7 @@ def build_board_help_text() -> str:
 
 *Task actions*
 `/board -n`
-`/board -n "AI 뉴스기사 수집" -p youtube -s todo`
+`/board -n "Collect AI news articles" -p youtube -s todo`
 `/board -e t_425b5e75`
 `/board --detail t_425b5e75`
 `/board -d t_425b5e75`
@@ -1383,10 +1383,10 @@ def build_board_help_text() -> str:
 `--archived` include archived tasks
 
 *Natural requests*
-`/board youtube 프로젝트 ready 텍스트로 보여줘`
-`/board bright data 조사 추가`
-`/board t_425b5e75 상세 보기`
-`/board 승인 필요한 일만 요약`
+`/board show the youtube project ready tasks as text`
+`/board add bright data research`
+`/board show detail for t_425b5e75`
+`/board summarize only tasks needing approval`
 """
 
 

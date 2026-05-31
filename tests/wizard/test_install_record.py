@@ -17,7 +17,7 @@ def test_install_writes_record_without_secrets(tmp_path, monkeypatch):
             ctx.data.setdefault("features", ["board", "meeting"])
             ctx.data.setdefault("created_app_ids", ["A1", "A2"])
             ctx.data.setdefault("slash_dropped", ["footer", "sethome"])
-            ctx.data.setdefault("config_token", "xoxe-SECRET")  # 기록되면 안 됨
+            ctx.data.setdefault("config_token", "xoxe-SECRET")  # must NOT be recorded
 
     monkeypatch.setattr(cli, "_build_steps", lambda: [_Seed()])
 

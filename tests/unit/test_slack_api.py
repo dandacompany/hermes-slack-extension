@@ -44,7 +44,7 @@ def test_auth_test_passes_token(monkeypatch):
 
 
 def test_http_error_becomes_slackapierror(monkeypatch):
-    # 429/5xx 등 HTTP 에러도 SlackAPIError로 통일되어 호출부 except가 잡을 수 있어야 함.
+    # HTTP errors like 429/5xx must also be normalized into SlackAPIError so callers' except blocks can catch them.
     def _raise(req, *a, **k):
         raise urllib.error.HTTPError(
             req.full_url, 429, "Too Many Requests", {},

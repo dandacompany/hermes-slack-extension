@@ -17,6 +17,18 @@ class SlackAdapter:
             # Start Socket Mode handler in background
             self._handler = None
 
+    async def send(self, chat_id, content, reply_to=None, metadata=None):
+        try:
+            last_result = None
+            sent_ts = None
+            return SendResult(
+                success=True,
+                message_id=sent_ts,
+                raw_response=last_result,
+            )
+        except Exception as e:
+            return SendResult(success=False, error=str(e))
+
     async def _handle_slash_confirm_action(self, ack, body, action):
         await ack()
 '''
@@ -56,12 +68,13 @@ def test_patches_copies_overlay_and_writes_sidecar(tmp_path, monkeypatch):
     assert (root / "gateway/platforms/slack_meeting_room.py").exists()
     sidecar = Path(tmp_path / "home" / "hermes-slack-ext" / "meeting_participants.json")
     names = json.loads(sidecar.read_text())
-    assert names == ["Researcher", "Designer"]   # base_app(모더레이터) 제외
+    assert names == ["Researcher", "Designer"]   # excludes base_app (moderator)
 
 
 def test_reinstall_preserves_clean_backup(tmp_path, monkeypatch):
-    # C1 회귀: 재설치(이미 패치된 slack.py) 시 백업이 패치본으로 덮어써지면 안 된다 —
-    # 클린 백업이 보존돼야 uninstall이 진짜로 언패치할 수 있다.
+    # C1 regression: on reinstall (slack.py already patched) the backup must not be
+    # overwritten with the patched file — a clean backup must survive so uninstall
+    # can truly unpatch.
     root = _root(tmp_path)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
     clean = (root / "gateway/platforms/slack.py").read_text()
@@ -71,9 +84,9 @@ def test_reinstall_preserves_clean_backup(tmp_path, monkeypatch):
                                    "persona_display_name": "Moderator"}]})
     bk_slack = Path(tmp_path / "bk" / "gateway/platforms/slack.py")
 
-    MR.MeetingRuntimeStep().apply(ctx)            # 1st: 클린 백업 + 패치
+    MR.MeetingRuntimeStep().apply(ctx)            # 1st: clean backup + patch
     assert bk_slack.read_text() == clean
     assert '@self._app.command("/meeting")' in (root / "gateway/platforms/slack.py").read_text()
 
-    MR.MeetingRuntimeStep().apply(ctx)            # 2nd(재설치): slack.py는 이미 패치됨
-    assert bk_slack.read_text() == clean          # 백업은 여전히 클린(패치본 미덮어씀)
+    MR.MeetingRuntimeStep().apply(ctx)            # 2nd (reinstall): slack.py already patched
+    assert bk_slack.read_text() == clean          # backup stays clean (not overwritten by the patched file)

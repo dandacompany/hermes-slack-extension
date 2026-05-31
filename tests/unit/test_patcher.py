@@ -18,7 +18,7 @@ def test_patch_inserts_all_board_markers():
     assert "_board_action_locks" in out
     assert "hermes_board_task_create" in out
     assert "async def send_kanban_board" in out
-    assert 'if name != "board"' in out          # generic 슬래시에서 board 제외
+    assert 'if name != "board"' in out          # exclude board from the generic slash handler
     assert board_markers_present(out)
 
 

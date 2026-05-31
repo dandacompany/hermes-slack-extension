@@ -19,7 +19,7 @@ def test_doctor_reports_state(tmp_path):
     res = CliRunner().invoke(cli.app, ["doctor", "--hermes-root", str(root), "--state-dir", str(sdir)])
     assert res.exit_code == 0, res.stdout
     assert "board" in res.stdout
-    assert "patched" in res.stdout.lower() or "패치" in res.stdout
+    assert "patched" in res.stdout.lower()
 
 
 def test_doctor_on_clean_checkout(tmp_path):

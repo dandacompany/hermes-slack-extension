@@ -13,9 +13,9 @@ REAL_VENV = REAL / "venv"
 
 
 @pytest.mark.skipif(not (REAL / "gateway/platforms/slack.py").exists() or not REAL_VENV.exists(),
-                    reason="실 Hermes 체크아웃/venv 없음")
+                    reason="no real Hermes checkout/venv")
 def test_headless_meeting_setup(tmp_path, monkeypatch):
-    # 클론
+    # clone
     root = tmp_path / "hermes-agent"
     (root / "gateway/platforms").mkdir(parents=True)
     (root / "tests").mkdir()
@@ -23,7 +23,7 @@ def test_headless_meeting_setup(tmp_path, monkeypatch):
     shutil.copy(REAL / "gateway/platforms/slack.py", root / "gateway/platforms/slack.py")
     shutil.copy(REAL / "pyproject.toml", root / "pyproject.toml")
 
-    # Slack API 목
+    # Slack API mocks
     monkeypatch.setattr(slack_api, "rotate_tokens", lambda r: {"token": "xoxe-fresh", "refresh_token": "xoxe-r2"})
     monkeypatch.setattr(slack_api, "create_app", lambda t, m: {"app_id": "A_p"})
     monkeypatch.setattr(slack_api, "update_app", lambda t, a, m: {"ok": True})
@@ -43,7 +43,7 @@ def test_headless_meeting_setup(tmp_path, monkeypatch):
         "profile_env_dir": str(tmp_path / "envs"),
         "skills_dir": str(tmp_path / "skills"),
         "staging_dir": str(tmp_path / "staging"),
-        # 3 참가자(researcher/developer/designer) bot/app 토큰
+        # bot/app tokens for 3 participants (researcher/developer/designer)
         "researcher_bot_token": "xoxb-r", "researcher_app_token": "xapp-r",
         "developer_bot_token": "xoxb-d", "developer_app_token": "xapp-d",
         "designer_bot_token": "xoxb-g", "designer_app_token": "xapp-g",
@@ -57,25 +57,25 @@ def test_headless_meeting_setup(tmp_path, monkeypatch):
         "--non-interactive", "--state-dir", str(tmp_path / "state"),
     ])
     assert result.exit_code == 0, result.stdout
-    # 참가자 env 3개 생성 + allowed_users 배선(모더레이터 봇 포함)
+    # 3 participant env files created + allowed_users wiring (including the moderator bot)
     for pid in ("researcher", "developer", "designer"):
         env = (tmp_path / "envs" / f"{pid}.env").read_text()
         assert "SLACK_BOT_TOKEN=" in env and "SLACK_ALLOW_BOTS=mentions" in env
-        assert "Bmod" in env, f"{pid}.env의 allowed_users에 모더레이터 봇 누락"
-    # moderator 스킬 설치
+        assert "Bmod" in env, f"moderator bot missing from allowed_users in {pid}.env"
+    # moderator skill installed
     assert (tmp_path / "skills" / "hermes-meeting" / "SKILL.md").exists()
 
-    # 미팅 Block Kit 런타임 패치 적용 확인
+    # verify the meeting Block Kit runtime patch is applied
     patched = (root / "gateway/platforms/slack.py").read_text()
     assert '@self._app.command("/meeting")' in patched
     assert "hermes_meeting_new" in patched
     assert (root / "gateway/platforms/slack_meeting_room.py").exists()
-    # 실 slack.py가 미팅 splice 후에도 py_compile 통과
+    # the real slack.py still passes py_compile after the meeting splice
     import subprocess as _sp
     _sp.run([str(REAL_VENV / "bin/python"), "-m", "py_compile",
              str(root / "gateway/platforms/slack.py"),
              str(root / "gateway/platforms/slack_meeting_room.py")], check=True)
-    # 참가자 사이드카(HERMES_HOME 아래) — HERMES_HOME 전역 override 시 tmp/home 사용
+    # participant sidecar (under HERMES_HOME) -- uses tmp/home when HERMES_HOME is globally overridden
     import json as _json
     sc = tmp_path / "home" / "hermes-slack-ext" / "meeting_participants.json"
     if sc.exists():

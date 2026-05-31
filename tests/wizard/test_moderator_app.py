@@ -23,5 +23,5 @@ def test_no_base_id_is_noop_with_guidance(tmp_path, capsys):
     man_path.write_text("{}")
     ctx = WizardContext(hermes_root=tmp_path)
     ctx.data.update({"features": ["meeting"], "base_manifest_path": str(man_path)})
-    M.ModeratorAppStep().apply(ctx)  # base_app_id 없음 → 예외 없이 안내만
+    M.ModeratorAppStep().apply(ctx)  # no base_app_id -> no exception, only guidance shown
     assert "base.json" in capsys.readouterr().out

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import re as _re_mod
 
-# --- install.py 라인 30-58에서 그대로 포팅 ---
+# --- Ported verbatim from install.py lines 30-58 ---
 BOARD_COMMAND_SNIPPET = '''\
             @self._app.command("/board")
             async def handle_board_command(ack, command):
@@ -66,8 +66,9 @@ def apply_board_patch(text: str, methods_frag: str) -> str:
             raise PatchError("missing command registration import marker")
         text = text.replace(marker, marker + BOARD_COMMAND_SNIPPET, 1)
 
-    # generic-slash 제외 — 공유 헬퍼로 위임(board/meeting 설치 순서와 무관하게 합성·멱등).
-    # board-only는 기존과 동일하게 `if name != "board"`를 만든다.
+    # Generic-slash exclusion — delegated to a shared helper (composes
+    # idempotently regardless of board/meeting install order). Board-only still
+    # produces `if name != "board"` as before.
     text = _apply_slash_exclusion(text, "board")
 
     if "hermes_board_task_create" not in text:
@@ -93,16 +94,17 @@ def apply_board_patch(text: str, methods_frag: str) -> str:
 
 
 def board_markers_present(text: str) -> bool:
-    # 기능 마커 4종으로 판정한다. generic-slash 제외(`if name != "board"`)는 meeting
-    # 합성 시 `if name not in ("board", "meeting")`로 승격되어 불안정하므로 체크에서 제외
-    # (제외 동작 자체는 patcher 합성 테스트가 검증).
+    # Decided by 4 functional markers. The generic-slash exclusion
+    # (`if name != "board"`) is excluded from the check because it is promoted to
+    # `if name not in ("board", "meeting")` when meeting is composed, making it
+    # unstable here (the exclusion behavior itself is covered by patcher tests).
     return all(m in text for m in (
         "_board_action_locks", '@self._app.command("/board")',
         "hermes_board_task_create", "async def send_kanban_board",
     ))
 
 
-# --- 미팅 splice 스니펫 ---
+# --- Meeting splice snippets ---
 
 MEETING_LOCK_SNIPPET = (
     "        self._meeting_action_locks: Dict[str, float] = {}\n"
@@ -130,10 +132,23 @@ _SOCKET_ANCHOR = "            # Start Socket Mode handler in background\n"
 _CONFIRM_ANCHOR = "    async def _handle_slash_confirm_action"
 _MEETING_METHODS_START = "    async def send_meeting_room"
 
+# Outbound send() hook: after the agent response is posted, (re)post the Meeting
+# Controls card at the bottom of a channel that has a live meeting so the buttons
+# follow the conversation. The call is spliced before send()'s success return.
+_SEND_HOOK_CALL = "            await self._maybe_post_meeting_controls(chat_id)\n"
+_SEND_RETURN_ANCHOR = (
+    "            return SendResult(\n"
+    "                success=True,\n"
+    "                message_id=sent_ts,\n"
+    "                raw_response=last_result,\n"
+    "            )\n"
+)
+
 
 def _apply_slash_exclusion(text: str, name: str) -> str:
-    """generic-slash 목록에서 name을 제외한다. (A) one-liner→`!= name`,
-    (B) board의 `if name != "X"`→`("X","name")` 튜플, (C) 기존 튜플에 추가. 멱등."""
+    """Exclude `name` from the generic-slash list. (A) one-liner -> `!= name`,
+    (B) board's `if name != "X"` -> `("X", "name")` tuple, (C) add to an existing
+    tuple. Idempotent."""
     one_liner = "            _slash_names = [name for name, _d, _h in slack_native_slashes()]\n"
     if one_liner in text:
         repl = (
@@ -162,34 +177,41 @@ def _apply_slash_exclusion(text: str, name: str) -> str:
 
 
 def apply_meeting_patch(text: str, methods_frag: str) -> str:
-    """보드 patch와 동일 구조의 5-splice를 미팅용으로 적용한다. 보드 설치 여부와
-    무관하게 멱등. 마커가 없으면 PatchError."""
+    """Apply the meeting splices (same structure as the board patch) to slack.py.
+    Idempotent regardless of whether the board patch is installed. Raises
+    PatchError if an anchor is missing."""
     if "_meeting_action_locks" not in text:
         if _INIT_ANCHOR not in text:
-            raise PatchError("slack.py __init__ 앵커(_slash_command_contexts)를 찾지 못함")
+            raise PatchError("slack.py __init__ anchor (_slash_command_contexts) not found")
         text = text.replace(_INIT_ANCHOR, _INIT_ANCHOR + MEETING_LOCK_SNIPPET, 1)
 
     if '@self._app.command("/meeting")' not in text:
         if _RE_IMPORT_ANCHOR not in text:
-            raise PatchError("connect()의 'import re as _re' 앵커를 찾지 못함")
+            raise PatchError("connect() 'import re as _re' anchor not found")
         text = text.replace(_RE_IMPORT_ANCHOR, _RE_IMPORT_ANCHOR + MEETING_COMMAND_SNIPPET, 1)
 
     text = _apply_slash_exclusion(text, "meeting")
 
     if "hermes_meeting_new" not in text:
         if _SOCKET_ANCHOR not in text:
-            raise PatchError("connect()의 'Start Socket Mode' 앵커를 찾지 못함")
+            raise PatchError("connect() 'Start Socket Mode' anchor not found")
         text = text.replace(_SOCKET_ANCHOR, MEETING_ACTION_SNIPPET + _SOCKET_ANCHOR, 1)
 
     methods = methods_frag.rstrip()
     if _CONFIRM_ANCHOR not in text:
-        raise PatchError("methods 앵커(_handle_slash_confirm_action)를 찾지 못함")
+        raise PatchError("methods anchor (_handle_slash_confirm_action) not found")
     if _MEETING_METHODS_START in text:
         start = text.index(_MEETING_METHODS_START)
         end = text.index(_CONFIRM_ANCHOR, start)
         text = text[:start] + methods + "\n\n" + text[end:]
     else:
         text = text.replace(_CONFIRM_ANCHOR, methods + "\n\n" + _CONFIRM_ANCHOR, 1)
+
+    # Splice the outbound send() hook (idempotent via the call presence guard).
+    if "self._maybe_post_meeting_controls(chat_id)" not in text:
+        if _SEND_RETURN_ANCHOR not in text:
+            raise PatchError("send() success-return anchor not found")
+        text = text.replace(_SEND_RETURN_ANCHOR, _SEND_HOOK_CALL + _SEND_RETURN_ANCHOR, 1)
 
     _assert_single_bodied_confirm(text)
     return text
