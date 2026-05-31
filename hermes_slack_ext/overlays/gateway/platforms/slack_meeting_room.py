@@ -78,11 +78,29 @@ def create_meeting(store: dict, *, channel_id: str, user_id: str, title: str,
         "routing_mode": routing_mode,
         "voice_mode": voice_mode,
         "status": "setup",
-        "session_thread_id": f"meeting:{channel_id}:{meeting_id}",
+        # 실제 Slack 스레드 ts로 런타임에 설정한다(회의 루트 메시지 게시 후). 합성 문자열을
+        # thread_id로 쓰면 Slack 답글 게시가 invalid_thread_ts로 실패하므로 빈 값으로 둔다.
+        "session_thread_id": "",
     }
     store["meetings"][meeting_id] = meeting
     store["current"][f"{channel_id}:{user_id}"] = meeting_id
     return meeting_id, store
+
+
+def set_session_thread(store: dict, meeting_id: str, thread_ts: str) -> dict:
+    """회의의 전용 세션 스레드를 실제 Slack 메시지 ts로 고정한다. 이 ts가 (a)Slack 답글
+    스레드, (b)에이전트 세션 키 분리에 동시에 쓰인다(일반 @멘션 세션과 분리)."""
+    m = get_meeting(store, meeting_id)
+    if m is not None:
+        m["session_thread_id"] = thread_ts
+    return store
+
+
+def build_room_anchor_text(meeting: dict) -> str:
+    """회의 루트(앵커) 메시지 — 채널에 게시하고 그 ts를 전용 세션 스레드로 사용한다."""
+    parts = ", ".join(meeting.get("participants", [])) or "—"
+    return (f":clipboard: *회의 룸 — {meeting.get('title', '(제목 없음)')}*\n"
+            f"참석자: {parts}\n_이 스레드에서 회의가 진행됩니다._")
 
 
 def get_meeting(store: dict, meeting_id: str) -> dict | None:

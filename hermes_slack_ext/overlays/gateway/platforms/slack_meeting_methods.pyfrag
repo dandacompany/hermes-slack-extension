@@ -42,9 +42,12 @@
             user_id=meeting["user_id"],
             thread_id=meeting["session_thread_id"],
         )
+        # 회의 프롬프트(시작/이어쓰기/다음/종료)는 모더레이터 에이전트에게 보내는 대화
+        # 메시지다. Prompt Contract가 "/meeting ..."로 시작하더라도 슬래시 명령으로
+        # 분류하면 게이트웨이가 "unrecognized command"로 처리하므로 항상 TEXT로 보낸다.
         event = MessageEvent(
             text=text,
-            message_type=MessageType.COMMAND if text.startswith("/") else MessageType.TEXT,
+            message_type=MessageType.TEXT,
             source=source,
             raw_message={},
         )
@@ -136,20 +139,33 @@
         import json as _json
         import time as _time
         from gateway.platforms.slack_meeting_room import (
-            load_store, save_store, create_meeting, gen_meeting_id,
-            parse_new_meeting_submission, build_start_prompt,
+            load_store, save_store, create_meeting, gen_meeting_id, set_session_thread,
+            parse_new_meeting_submission, build_start_prompt, build_room_anchor_text,
         )
         meta = _json.loads(view.get("private_metadata") or "{}")
+        channel_id = meta.get("channel_id", "")
         fields = parse_new_meeting_submission(view.get("state", {}).get("values", {}))
         store = load_store()
         mid = gen_meeting_id(_time.time())
         mid, store = create_meeting(
-            store, channel_id=meta.get("channel_id", ""), user_id=meta.get("user_id", ""),
+            store, channel_id=channel_id, user_id=meta.get("user_id", ""),
             title=fields["title"], participants=fields["participants"], turns=fields["turns"],
             mode=fields["mode"], routing_mode=fields["routing_mode"],
             voice_mode=fields["voice_mode"], meeting_id=mid)
         meeting = store["meetings"][mid]
         meeting["status"] = "active"
+        # 채널에 회의 루트 메시지를 게시하고 그 실제 ts를 전용 세션 스레드로 고정한다.
+        # 합성 thread_id는 invalid_thread_ts를 유발하므로, 실 ts를 (a)Slack 답글 스레드,
+        # (b)에이전트 세션 분리에 함께 사용한다.
+        try:
+            posted = await self._get_client(channel_id).chat_postMessage(
+                channel=channel_id, text=build_room_anchor_text(meeting))
+            ts = posted.get("ts", "")
+            if ts:
+                set_session_thread(store, mid, ts)
+                meeting = store["meetings"][mid]
+        except Exception as exc:  # pragma: no cover - 런타임 방어
+            logger.warning("[Slack] meeting 루트 메시지 게시 실패: %s", exc)
         save_store(store)
         await self._dispatch_meeting_prompt(meeting, build_start_prompt(meeting))
 

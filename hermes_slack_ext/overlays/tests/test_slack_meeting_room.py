@@ -39,11 +39,27 @@ def test_create_meeting_sets_fields_and_thread_id(tmp_path, monkeypatch):
     )
     m = mr.get_meeting(store, mid)
     assert mid == "mtg-x"
-    assert m["session_thread_id"] == "meeting:C1:mtg-x"
+    assert m["session_thread_id"] == ""   # 런타임에 실제 Slack ts로 설정됨
     assert m["status"] == "setup"
     assert m["participants"] == ["Researcher", "Designer"]
     assert m["routing_mode"] == "manual"
     assert store["current"]["C1:U1"] == "mtg-x"
+
+
+def test_set_session_thread_anchors_real_ts(tmp_path, monkeypatch):
+    _store_path(tmp_path, monkeypatch)
+    store = mr.load_store()
+    mid, store = mr.create_meeting(
+        store, channel_id="C1", user_id="U1", title="t", participants=[],
+        turns="3", mode="mixed", routing_mode="auto", voice_mode="text-only", meeting_id="m1")
+    store = mr.set_session_thread(store, mid, "1717146402.000100")
+    assert mr.get_meeting(store, mid)["session_thread_id"] == "1717146402.000100"
+
+
+def test_build_room_anchor_text_has_title_and_participants():
+    m = {"title": "YT 기획", "participants": ["Researcher", "Designer"]}
+    txt = mr.build_room_anchor_text(m)
+    assert "YT 기획" in txt and "Researcher" in txt and "Designer" in txt
 
 
 def test_list_meetings_filters_by_channel(tmp_path, monkeypatch):
