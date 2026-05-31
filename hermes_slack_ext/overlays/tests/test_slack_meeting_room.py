@@ -108,7 +108,8 @@ def _meeting():
 
 def test_build_start_prompt_follows_contract():
     text = mr.build_start_prompt(_meeting())
-    assert text.startswith("/meeting YT 기획")
+    assert not text.startswith("/")          # 선행 슬래시 금지(게이트웨이 명령 오분류 방지)
+    assert "YT 기획" in text
     assert "참석자: Researcher, Designer" in text
     assert "턴수: 4턴" in text
     assert "진행: mixed" in text

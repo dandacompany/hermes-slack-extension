@@ -149,8 +149,10 @@ _SESSION_NOTE = (
 
 def build_start_prompt(meeting: dict) -> str:
     parts = ", ".join(meeting.get("participants", []))
+    # 헤더가 "/"로 시작하면 게이트웨이가 슬래시 명령으로 재파싱하므로(message_type과
+    # 무관) 선행 슬래시 없이 회의 setup 신호를 전달한다.
     return (
-        f"/meeting {meeting.get('title', '')}\n\n"
+        f"회의 setup 시작 — 주제: {meeting.get('title', '')}\n\n"
         f"참석자: {parts}\n"
         f"턴수: {meeting.get('turns', '')}턴\n"
         f"진행: {meeting.get('mode', '')}\n"
