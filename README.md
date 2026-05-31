@@ -21,13 +21,19 @@ same input always produces the same result. You can step through an interactive 
 ## Installation
 
 ```bash
-# Bootstrap (isolated venv + register hermes-ext)
-curl -fsSL <install-remote.sh URL> | bash
+# Bootstrap (isolated venv + register hermes-ext) — once the repo is published
+curl -fsSL https://raw.githubusercontent.com/dandacompany/hermes-slack-extension/main/scripts/install-remote.sh | bash
 
-# Or directly
-pip install git+<repo>
+# From GitHub
+pip install "git+https://github.com/dandacompany/hermes-slack-extension@main"
 hermes-ext install            # interactive wizard
+
+# From a local checkout (no remote needed)
+pip install -e . && hermes-ext install
 ```
+
+See **[TUTORIAL.md](TUTORIAL.md)** for the full walkthrough. Override the install
+source with the `HSE_REPO` / `HSE_REF` environment variables.
 
 The wizard detects the Hermes root (default `~/.hermes/hermes-agent`), verifies it's a supported version (0.12.0–0.15.1),
 then has you select features and walks through them step by step.

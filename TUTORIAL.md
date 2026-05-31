@@ -33,20 +33,35 @@ This guide walks you from installation through everyday use.
 
 ## 2. Installation
 
-### Option A — one-line bootstrap (recommended)
+> **Publishing note:** the remote install commands below assume the repo is
+> hosted at `github.com/dandacompany/hermes-slack-extension` (the default baked
+> into `scripts/install-remote.sh`). Until it is pushed there, use **Option C
+> (local checkout)**. Override the source any time with the `HSE_REPO` / `HSE_REF`
+> environment variables.
+
+### Option A — one-line bootstrap (recommended, once published)
 
 ```bash
-curl -fsSL <raw-url>/scripts/install-remote.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dandacompany/hermes-slack-extension/main/scripts/install-remote.sh | bash
 ```
 
-This creates an isolated venv, installs the package, links `hermes-ext` into
-`~/.local/bin`, and runs the install wizard.
+Creates an isolated venv under `~/.hermes/hermes-slack-ext/venv`, installs the
+package from GitHub, links `hermes-ext` into `~/.local/bin`, and runs the wizard.
 
-### Option B — manual
+### Option B — install from GitHub
 
 ```bash
-pip install hermes-slack-extension      # or: pip install -e .  from a checkout
-hermes-ext install                      # run the wizard
+pip install "git+https://github.com/dandacompany/hermes-slack-extension@main"
+hermes-ext install
+```
+
+### Option C — from a local checkout (works today, no remote needed)
+
+```bash
+git clone https://github.com/dandacompany/hermes-slack-extension   # or use your existing checkout
+cd hermes-slack-extension
+pip install -e .
+hermes-ext install
 ```
 
 Useful flags:
