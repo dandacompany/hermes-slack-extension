@@ -46,7 +46,14 @@ class SlackAppsStep(Step):
                 created_ids.append(app_id)
             prof["app_id"] = app_id
 
-            # 사용자 수동: 설치(OAuth) + app-level 토큰 발급 후 두 토큰 붙여넣기(미출력)
+            # 사용자 수동: 설치(OAuth) + app-level 토큰 발급 후 두 토큰 붙여넣기(미출력).
+            # 생성된 앱의 설치 위치를 안내한다(대화형 사용자가 토큰 발급처를 찾도록).
+            oauth_url = resp.get("oauth_authorize_url", "")
+            print(f"\n[{pid}] 앱 생성됨 (app_id={app_id}) — 설치 후 토큰 2개를 붙여넣으세요:")
+            print(f"  설치: https://api.slack.com/apps/{app_id} → Install App → Install to Workspace")
+            if oauth_url:
+                print(f"  (또는 OAuth 링크: {oauth_url})")
+            print("  App-Level Token: Basic Information → App-Level Tokens → connections:write 로 생성\n")
             bot = prompts.password(f"{pid}_bot_token", f"[{pid}] Install 후 Bot Token (xoxb-...)")
             app_tok = prompts.password(f"{pid}_app_token", f"[{pid}] App-Level Token (xapp-...)")
             env_path = env_dir / f"{pid}.env"
