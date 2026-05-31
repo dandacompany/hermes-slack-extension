@@ -1,202 +1,281 @@
-# hermes-slack-extension
+# Hermes Slack Extension
 
-A CLI install wizard that deterministically adds a **`/board` Kanban board** and a **`/meeting` text meeting room**
-to the Slack integration of Hermes Agent (0.15.x). It replaces the non-deterministic skill-based approach, so the
-same input always produces the same result. You can step through an interactive TUI prompt by prompt, or run it headless with `--answers-file`.
+Turn your self-hosted **Hermes Agent** into a richer Slack workspace with two
+Block Kit experiences:
 
-> **New here?** See **[TUTORIAL.md](TUTORIAL.md)** for a full install-to-usage walkthrough.
+- **`/board`** — a Kanban board you drive with buttons and natural language.
+- **`/meeting`** — a multi-bot meeting room where a moderator and participant
+  personas run a structured, self-driving discussion right in the channel.
 
-## What it does
+`hermes-ext` is a **deterministic install wizard**: it patches Hermes
+`gateway/platforms/slack.py`, auto-generates the Slack app manifests, creates the
+participant apps, and wires everything up — the same inputs always produce the
+same result. It also uninstalls cleanly.
 
-- **`/board`** — Idempotently patches a Kanban board Block Kit handler into Hermes's `gateway/platforms/slack.py`
-  and installs the board overlay module.
-- **`/meeting`** — Automatically creates per-profile Slack apps (participants) and builds a text-driven meeting room
-  by configuring the persona matrix, channel prompts, bot-to-bot wiring, and moderator skill.
-- **Slash swap** — Within Slack's 50-command limit on slash commands, it removes two rarely used default commands and
-  adds `/board` and `/meeting` (see below). The removed commands don't simply disappear — they still work via `/hermes <command>`.
-- **Manifest auto-generation** — It calls the installed Hermes's `hermes slack manifest` directly to build a manifest
-  that reflects the command registry of the current version, then applies the swap to it.
-  Socket Mode and interactivity are enabled automatically in the manifest, so the user doesn't have to turn them on separately.
+> Works with **Hermes Agent 0.15.x** (supported range 0.12.0–0.15.1) running in
+> Socket Mode.
+
+---
+
+## What you get
+
+| Feature               | What it adds                                                                                                                                                                            |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`/board`**          | A Kanban Block Kit board — Add / Move / Detail / Approve tasks, plus natural-language commands (English & Korean).                                                                      |
+| **`/meeting`**        | A meeting room: pick participants and a format, then the bots take turns automatically (auto routing) and post a clean, natural discussion in the channel, with an inline control card. |
+| **Slash swap**        | Frees room under Slack's 50-command limit by retiring two unused defaults and adding `/board` + `/meeting` (the retired ones still work via `/hermes <command>`).                       |
+| **Manifest auto-gen** | Builds the Slack manifests from your installed Hermes's command registry and enables Socket Mode + interactivity automatically.                                                         |
+
+---
+
+## Prerequisites
+
+- A self-hosted **Hermes Agent 0.15.x** checkout (default `~/.hermes/hermes-agent`)
+  running in **Socket Mode**, with its Python venv.
+- A **Slack workspace** where you can install apps, and the base Hermes Slack app
+  already installed (it becomes the meeting **moderator**).
+- A Slack **App Configuration Token** (`xoxe.xoxp-…`) — used to create the
+  participant apps and apply manifests. Get it at
+  <https://api.slack.com/apps> → **App Configuration Tokens**.
+- Python 3.10+ to run the wizard.
+
+> The wizard never prints secrets. Tokens are read from hidden prompts (or the
+> environment) and written only to the relevant `.env` files at `0600`.
+
+---
 
 ## Installation
 
+> The remote commands assume the repo is hosted at
+> `github.com/dandacompany/hermes-slack-extension` (the default in
+> `scripts/install-remote.sh`). Until it is published there, use **Option C
+> (local checkout)**. Override the source any time with `HSE_REPO` / `HSE_REF`.
+
+**Option A — one-line bootstrap** (once published)
+
 ```bash
-# Bootstrap (isolated venv + register hermes-ext) — once the repo is published
 curl -fsSL https://raw.githubusercontent.com/dandacompany/hermes-slack-extension/main/scripts/install-remote.sh | bash
+```
 
-# From GitHub
+Creates an isolated venv under `~/.hermes/hermes-slack-ext/venv`, installs the
+package from GitHub, links `hermes-ext` into `~/.local/bin`, and runs the wizard.
+
+**Option B — from GitHub**
+
+```bash
 pip install "git+https://github.com/dandacompany/hermes-slack-extension@main"
-hermes-ext install            # interactive wizard
-
-# From a local checkout (no remote needed)
-pip install -e . && hermes-ext install
+hermes-ext install
 ```
 
-See **[TUTORIAL.md](TUTORIAL.md)** for the full walkthrough. Override the install
-source with the `HSE_REPO` / `HSE_REF` environment variables.
+**Option C — from a local checkout** (works today)
 
-The wizard detects the Hermes root (default `~/.hermes/hermes-agent`), verifies it's a supported version (0.12.0–0.15.1),
-then has you select features and walks through them step by step.
-
-```
-hermes-ext install \
-  --hermes-root ~/.hermes/hermes-agent \
-  --answers-file answers.yaml \   # headless (optional)
-  --non-interactive \
-  --dry-run                       # simulate without making changes (optional)
+```bash
+git clone https://github.com/dandacompany/hermes-slack-extension
+cd hermes-slack-extension
+pip install -e .
+hermes-ext install
 ```
 
-## `/meeting` install flow
+### Wizard flags
 
-When you select the meeting feature, the wizard proceeds in the following order.
+| Flag                                        | Purpose                                                     |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| `--hermes-root PATH`                        | Hermes checkout to patch (default `~/.hermes/hermes-agent`) |
+| `--dry-run`                                 | Show planned changes without writing anything               |
+| `--answers-file FILE` + `--non-interactive` | Headless install from a YAML answers file                   |
+| `--state-dir PATH`                          | Where install state / backups / records live                |
 
-1. **Configure meeting profiles** — Accept the default set of 4 (Moderator, Researcher, Developer, Designer) as-is,
-   or use a preset/custom option to change names and personas (no LLM inference, fully deterministic).
-   - The moderator = the user's **existing base Hermes app** (with `/meeting` added via slash swap).
-   - The 3 participants = newly created **minimal-manifest apps** (no slash commands, Socket Mode on).
-2. **Capture the App Configuration Token** — Enter the token (+refresh) issued at
-   `api.slack.com/apps` → _Your App Configuration Tokens_. A single token creates all apps in the workspace.
-   Input is not shown on screen; only a masked confirmation is displayed.
-3. **Create participant apps and tokens** — For each profile, create an app via `apps.manifest.create`, then the user manually
-   installs it (OAuth) and pastes in the resulting Bot Token and App-Level Token. Tokens are written atomically to each profile's `.env`
-   with `0600` permissions; `bot_user_id` is acquired automatically via `auth.test`, and the bot is invited if the channel is public.
-4. **Apply to the moderator base app** — If the config token and the base `app_id` are present, apply the swapped manifest via `apps.manifest.update`;
-   otherwise, point the user to the manifest file path for manual application.
-5. **Wiring** — Write bot-to-bot environment variables to each profile's `.env` (`SLACK_ALLOWED_USERS` including all bots,
-   `SLACK_ALLOW_BOTS=mentions`, etc.), render the moderator and participant channel prompts into a staging
-   directory, and install the moderator skill to `~/.hermes/skills/hermes-meeting/`.
+### What the wizard does
 
-### Manual steps the user must do directly
+The wizard detects and version-gates Hermes, lets you select features
+(`board` / `meeting`), then runs the relevant steps. For `/meeting` it:
 
-The wizard guides you through items that can't be automated (Slack UI/OAuth constraints).
+1. **Configures meeting profiles** — accept the default 4 (Moderator, Researcher,
+   Developer→**Backend**, Designer) or pick presets / custom personas
+   (no LLM, fully deterministic). The moderator is your **existing base Hermes
+   app**; the participants are newly created minimal-manifest apps.
+2. **Captures the App Configuration Token** (hidden input) — one token creates
+   every app in the workspace.
+3. **Creates participant apps** via `apps.manifest.create`, captures each Bot
+   Token + App-Level Token, runs `auth.test`, and joins the channel.
+4. **Applies the moderator manifest** (the slash swap), or points you to the
+   manifest file for manual application.
+5. **Wires bot-to-bot** — writes each profile's channel prompt and `.env`
+   (`SLACK_ALLOW_BOTS=mentions`, allow-list of all bots), installs the moderator
+   skill, and writes the **mention map** (profile name → bot user id) used for
+   auto routing.
 
-- **Issue an App Configuration Token** — _Your App Configuration Tokens_ at `api.slack.com/apps`.
-- **Install each participant app (Install to Workspace)** — Issues a Bot Token (`xoxb-…`) via OAuth.
-- **Issue an App-Level Token** — With the `connections:write` scope (`xapp-…`). It can't be created via API, so issue it in the UI.
-- **Invite the bot to the channel** — For private channels or when auto-invite is blocked.
+The wizard is **resumable** — re-running continues from the last completed step.
 
-During interactive runs, the wizard asks for the following identifiers (not secrets). For headless runs (`--answers-file`),
-provide them in advance under the same keys.
+### Identifiers the wizard asks for
 
-- **Meeting channel ID** (`channel_id`, `Cxxxxxxxx`) — The target for auto-inviting and wiring participant bots.
-- **Your own Slack User ID** (`human_user_id`, `Uxxxxxxxx`) — Included in the allow-list.
-- **Moderator Bot User ID** (`moderator_bot_user_id`, `Uxxxxxxxx`) — The bot of the base Hermes app.
-  This value is required for the moderator to be included in `SLACK_ALLOWED_USERS` so that moderator→participant
-  mention routing works (if missing, participants ignore moderator mentions).
+These are not secrets (provide them under the same keys in headless runs):
 
-> The wizard never prints bot/app tokens; they are stored only in each profile's `.env` with `0600` permissions.
-> `--dry-run` only shows the planned actions without actually creating Slack apps or writing tokens.
+- **Meeting channel ID** (`channel_id`, `Cxxxxxxxx`)
+- **Your Slack User ID** (`human_user_id`, `Uxxxxxxxx`)
+- **Moderator Bot User ID** (`moderator_bot_user_id`, `Uxxxxxxxx`) — required so
+  the moderator is in the allow-list and routing works.
+
+### Manual Slack steps (UI/OAuth only)
+
+The wizard guides you through what Slack can't automate:
+
+- Issue an **App Configuration Token** (api.slack.com/apps).
+- **Install each participant app** (Install to Workspace) → issues a Bot Token.
+- Issue an **App-Level Token** with the `connections:write` scope (`xapp-…`).
+- **Invite each bot** to the channel (for private channels / blocked auto-invite).
+
+### After install
+
+```bash
+hermes gateway restart
+```
+
+---
+
+## Verify
+
+```bash
+hermes-ext doctor
+```
+
+Reports whether `slack.py` is **board patched** / **meeting patched**, which
+overlays are present, whether a clean backup exists, and the install record.
+
+---
+
+## Using `/board`
+
+In a channel where the bot is present:
+
+```
+/board
+```
+
+- **Add / Move / Detail / Approve** tasks with the buttons.
+- Or use natural language with the bot — e.g. `add a "collect AI news" task`,
+  `show the ready tasks as text`, `move t_abc123 to in-progress`,
+  `summarize only tasks needing approval` (English and Korean both work).
+
+---
+
+## Using `/meeting`
+
+### 1. Open the room
+
+```
+/meeting
+```
+
+An ephemeral **Meeting Room** (visible only to you) appears with **New meeting**
+and **Refresh**.
+
+### 2. Create a meeting
+
+Press **New meeting** and fill the modal: topic & goal, participants, turns,
+mode (`mixed` / `sequential` / `parallel` / `directed`), routing (`auto` /
+`manual`), voice (`text-only` / `voice-summary` / `voice-full` / `hybrid`).
+
+Press **Create** — a **Meeting Controls** card appears in the channel with a
+**Start** button. Creating does _not_ start the meeting yet.
+
+### 3. Run it
+
+1. **Start** → the moderator posts a short, clean **setup draft** and asks for
+   approval. The card then shows **Approve / Continue / End**.
+2. **Approve** → the meeting begins.
+   - **auto** routing: the moderator addresses the next speaker (e.g.
+     `@Researcher`), that bot replies and hands back, and the moderator routes the
+     next one — the meeting **self-drives** to a final synthesis.
+   - **manual** routing: use the **Next: \<name\>** buttons to pick each speaker.
+3. **Continue** → add your own message mid-meeting.
+4. **End** → the moderator summarizes decisions, open questions, and next actions.
+
+The whole discussion happens in the **channel body**, and the Meeting Controls
+card follows along below the latest reply. Internal scaffolding (state blocks,
+hand-off labels) is hidden, so you read a natural conversation; messages are
+rendered in your topic's language.
+
+> The moderator runs on a reasoning model, so each turn can take up to a minute.
+> While it thinks, the card shows a "responding…" state with **no buttons** — so
+> you never press the next button before the answer is visible. A full auto
+> meeting of several turns takes a few minutes; if it stalls, use **Next** to
+> nudge it or **End** to wrap up.
+
+---
 
 ## Slash command swap
 
-A Slack workspace allows at most 50 slash commands per app. To make room, the extension removes 2 default commands
-and adds the same number, **keeping the total count unchanged**.
+Slack allows at most 50 slash commands per app. To make room, the extension
+retires two unused defaults and adds the same number — total count unchanged:
 
-| Feature | Default command removed | Command added |
-| ------- | ----------------------- | ------------- |
-| board   | `/footer`               | `/board`      |
-| meeting | `/sethome`              | `/meeting`    |
+| Feature | Retired    | Added      |
+| ------- | ---------- | ---------- |
+| board   | `/footer`  | `/board`   |
+| meeting | `/sethome` | `/meeting` |
 
-Removed commands don't lose their functionality. You can still invoke them through Hermes's dispatcher (`/hermes <command>`)
-(e.g., `/hermes footer`). The removed list is recorded as `slash_dropped` in the install state.
+Retired commands keep working through Hermes's dispatcher: `/hermes footer`,
+`/hermes sethome`. The retired list is recorded as `slash_dropped`.
 
-## `/meeting` Block Kit runtime (P3)
+---
 
-When you install the meeting feature, the `meeting_runtime` step idempotently patches the `/meeting` handler into the Hermes gateway's `slack.py`
-and installs the overlay module (`slack_meeting_room.py`). A Block Kit control surface is layered on top of the text `/meeting` (P2).
+## Diagnostics & uninstall
 
-- **`/meeting`** → ephemeral meeting room: header `Hermes Meeting Room`, `Start new meeting` and `Refresh` buttons,
-  and meeting rows (title, status, attendees + action buttons).
-- **New meeting modal** (6 fields): topic/goal / attendees (multi-select of configured participant personas, or text if none) /
-  number of turns / progress mode (`mixed`, `sequential`, `parallel`, `directed`) / progress control (`auto`, `manual`) /
-  voice mode (`voice-summary`, `text-only`, `voice-full`, `hybrid`).
-- **Meeting actions**: `Start` / `Continue` (modal) / `Next: <profile>` (only in manual routing) / `End`.
-  Each action injects a prompt into the meeting's **dedicated session** (`session_thread_id = meeting:<channel>:<id>`) —
-  the moderator agent runs in a session **separate** from regular `@mention`/channel conversations.
-  - `auto`: the moderator immediately calls the next single participant. `manual`: waits for the `Next: <profile>` button in the UI.
-- **Session store**: `$HERMES_HOME/hermes-slack-ext/meeting_sessions.json` (meetings/current/`session_thread_id`).
-  Participant persona display names are read as modal options from the `meeting_participants.json` sidecar
-  (recorded by the wizard from the P2 profiles; excluding the base_app moderator).
-
-> Note: among the default set of 4, "Developer" uses the `backend_engineer` preset, so its bot/meeting display name is **"Backend"**
-> (routing, env, and prompts are all consistent based on the persona display name). To change the display name, edit the persona in profile custom
-> mode.
-
-## Diagnostics and rollback (doctor / uninstall)
-
-### `hermes-ext doctor`
-
-Diagnoses the install state (no token required).
-
-```
-hermes-ext doctor --hermes-root ~/.hermes/hermes-agent
-```
-
-Reported items: Hermes version, existence of `slack.py`, whether the board/meeting patches are applied, installed overlays,
-backup availability, install record (features, dropped slash commands), and number of created apps. If patches exist but there's no install record
-(e.g., a different machine or a manual patch), it warns and notes that uninstall will operate only based on backups/markers.
-
-### `hermes-ext uninstall`
-
-The inverse operation of install. **First review the plan with `--dry-run`.**
-
-```
-hermes-ext uninstall --dry-run                 # print rollback plan only (no changes)
+```bash
+hermes-ext uninstall --dry-run                 # print the rollback plan only
 hermes-ext uninstall --yes                     # roll back without confirmation
-hermes-ext uninstall --yes --delete-apps       # also delete created participant apps
+hermes-ext uninstall --yes --delete-apps       # also delete the created participant apps
 ```
 
-Rollback behavior: ① restore `slack.py` from backup (= unpatch) → ② delete overlay modules
-(`slack_kanban_board.py`, `slack_meeting_room.py` + tests) → ③ clean up meeting artifacts (session store,
-participant sidecar, base manifest, moderator skill, staging) → ④ (`--delete-apps`)
-delete created apps via `apps.manifest.delete` → ⑤ guide the gateway restart.
+Uninstall is the inverse of install: ① restore `slack.py` from the clean backup
+(unpatch) → ② remove the overlay modules → ③ clean up meeting artifacts (session
+store, mention map, participant sidecar, base manifest, moderator skill, staging)
+→ ④ (with `--delete-apps`) delete the created apps via `apps.manifest.delete`.
 
-- **Token rules**: The config token for app deletion is accepted only via the **environment variable `HSE_CONFIG_TOKEN`** or an interactive password
-  prompt — tokens are never placed in CLI arguments or logs. If there's no token, app deletion is skipped and the
-  `app_id` values to delete manually are shown.
-- **Preservation**: Each profile's `.env` (which holds bot/app tokens) is preserved by default (so secrets aren't deleted by accident).
-- **When backups are missing**: It only guides you instead of restoring automatically (no destructive actions such as force-removing markers).
+- **Token rule**: app deletion reads the config token only from the
+  `HSE_CONFIG_TOKEN` env var or an interactive password prompt — never from CLI
+  args or logs. Without a token, deletion is skipped and the `app_id`s to remove
+  are printed.
+- Each profile's `.env` (bot/app tokens) is **preserved** by default.
+- Reverting the base app's slash swap is guided manually (it needs the original
+  manifest snapshot); `doctor` reports the dropped commands.
 
-### install ↔ uninstall symmetry
+Restart the gateway after uninstalling.
 
-| Install                                          | Rollback                                                                |
-| ------------------------------------------------ | ----------------------------------------------------------------------- |
-| Patch `slack.py` after backup                    | Restore `slack.py` from backup (unpatch)                                |
-| Copy overlay modules                             | Delete overlay modules                                                  |
-| Create participant apps (`apps.manifest.create`) | (`--delete-apps`) `apps.manifest.delete`                                |
-| Install meeting artifacts and skill              | Clean up meeting artifacts and skill                                    |
-| Slash swap (base manifest)                       | Report `slash_dropped` (reverting the base manifest is guided manually) |
+---
 
-> Automatically reverting the slash swap in the base (moderator) app manifest requires a snapshot of the original manifest,
-> which is out of scope for now. Since doctor reports `dropped`, revert it manually in the Slack App Manifest or
-> regenerate and apply it with `hermes slack manifest`.
+## Troubleshooting
 
-## Verification levels
+| Symptom                                         | Cause / fix                                                                                                                                                                            |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A participant is never called in auto routing   | Every bot needs the patched gateway code **and** the `meeting_mentions.json` mention map in its `HERMES_HOME`. If profiles run in separate containers, deploy the patch + map to each. |
+| The moderator keeps using an old message format | The agent **session is persisted** and resumes across restarts. Reset it (`/new`, or clear `HERMES_HOME/sessions/sessions.json`) so the current prompts/skill take effect.             |
+| `/board` or `/meeting` isn't delivered          | The command must be declared in the manifest **and** Socket Mode connected. Re-check the manifest and `hermes-ext doctor`.                                                             |
+| Bots don't reply to each other                  | Each profile's `.env` needs `SLACK_ALLOW_BOTS=mentions` and the bot must be in the channel.                                                                                            |
 
-- **L1 (code)** — `pytest` unit tests. Slack API and token prompts are all handled with mocks.
-- **L2 (headless)** — Clone a real Hermes checkout and drive the wizard end to end with `--answers-file`
-  (`tests/e2e/test_headless_meeting_setup.py`). The Slack API is mocked; no real tokens needed.
-- **L3 (real Slack, tokens required)** — The checklist below. Only this level uses real tokens.
+---
 
-### L3 smoke checklist
+## For contributors
 
-1. Run the wizard to completion with a config token and participant tokens, all the way through real app creation, installation, and invitation.
-2. Confirm `board patched ✓`, `meeting patched ✓`, and the install record via `hermes-ext doctor`.
-3. Restart the gateway: `hermes gateway restart`.
-4. **Block Kit**: In the meeting channel, `/meeting` → meeting room → submit the `Start new meeting` modal →
-   the moderator presents a setup draft in the **dedicated session** (separate from regular `@mention`s).
-5. `Start` → in auto mode the moderator calls the next single participant; in manual mode, route one turn with `Next: <profile>`.
-6. Inject follow-up messages with `Continue`, and wrap up with a summary via `End`. Confirm that participant bots respond bot-to-bot based on mentions.
-7. (Text fallback) Confirm that even without Block Kit, the text invocation `/meeting <topic>` drives the meeting via the moderator skill.
-8. **Rollback round-trip**: Review the plan with `hermes-ext uninstall --dry-run` →
-   `hermes-ext uninstall --yes --delete-apps` (env `HSE_CONFIG_TOKEN`) → confirm `✗` with `doctor` →
-   after restarting the gateway, confirm that `/board` and `/meeting` have disappeared and the original state is restored.
+Verification runs at three levels:
 
-## Roadmap
+- **L1 (unit)** — `pytest tests/ hermes_slack_ext` (Slack API and prompts mocked).
+- **L2 (headless)** — drive the wizard end to end against a fixture Hermes
+  checkout with `--answers-file`.
+- **L3 (live)** — install against a real Slack workspace; behavior is verified
+  via the Slack Web API (`conversations.history`), not just gateway logs.
 
-All stages P0–P4 are merged into master (board + deterministic meeting setup + meeting Block Kit runtime + rollback/diagnostics).
-All that remains is **L3 real-world testing** (running the smoke checklist above with real Slack tokens).
+---
 
 ## License
 
-Internal tool. Requires workspace administrator approval before use.
+Internal tool — check with your workspace administrator before use.
+Copyright © 2026 Dante Labs.
+
+---
+
+<div align="center">
+
+**YouTube** [@dante-labs](https://youtube.com/@dante-labs) · **Email** dante@dante-labs.com · [☕ Buy Me a Coffee](https://buymeacoffee.com/dante.labs)
+
+</div>
