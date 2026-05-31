@@ -77,6 +77,16 @@
             except Exception:
                 pass
 
+    async def _post_meeting_note(self, meeting: dict, text: str) -> None:
+        """회의 스레드에 즉시 확인 노트를 남긴다(버튼 피드백). 비동기 에이전트 응답 전에
+        '눌렸다'는 신호를 준다. session_thread_id가 없으면 채널 루트에 게시."""
+        ch = meeting.get("channel_id", "")
+        thread = meeting.get("session_thread_id") or None
+        try:
+            await self._get_client(ch).chat_postMessage(channel=ch, thread_ts=thread, text=text)
+        except Exception as exc:  # pragma: no cover - 런타임 방어
+            logger.warning("[Slack] meeting note 게시 실패: %s", exc)
+
     async def _handle_meeting_action(self, ack, body, action) -> None:
         await ack()
         from gateway.platforms.slack_meeting_room import (
@@ -122,13 +132,17 @@
             return
         if kind == "start":
             set_status(store, meeting_id, "active"); save_store(store)
+            await self._post_meeting_note(meeting, ":arrow_forward: 회의를 시작합니다 — 모더레이터가 setup을 준비합니다.")
             await self._dispatch_meeting_prompt(meeting, build_start_prompt(meeting))
             await self._refresh_meeting_room(body)
             return
         if kind == "next":
-            await self._dispatch_meeting_prompt(meeting, build_next_prompt(meeting, data.get("profile", "")))
+            profile = data.get("profile", "")
+            await self._post_meeting_note(meeting, f":arrow_right: 다음 발언자: *{profile}*")
+            await self._dispatch_meeting_prompt(meeting, build_next_prompt(meeting, profile))
             return
         if kind == "end":
+            await self._post_meeting_note(meeting, ":stop_button: 회의를 종료합니다.")
             await self._dispatch_meeting_prompt(meeting, build_end_prompt(meeting))
             set_status(store, meeting_id, "ended"); save_store(store)
             await self._refresh_meeting_room(body)
@@ -180,4 +194,5 @@
         store = load_store()
         meeting = get_meeting(store, meeting_id)
         if meeting and text:
+            await self._post_meeting_note(meeting, f":pencil2: 이어쓰기: {text[:200]}")
             await self._dispatch_meeting_prompt(meeting, build_continue_prompt(meeting, text))
