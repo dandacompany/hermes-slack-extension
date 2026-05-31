@@ -107,3 +107,24 @@ def test_auth_test_failure_does_not_abort_loop(tmp_path, monkeypatch):
     rp = next(p for p in ctx.data["profiles"] if p["profile_id"] == "researcher")
     assert rp["bot_user_id"] == ""           # 실패해도 진행
     assert rp["app_id"] == "A_new"
+
+
+def test_pre_created_app_ids_skip_creation(tmp_path, monkeypatch):
+    # participant_app_ids가 주어지면 create_app을 호출하지 않고 그 app_id를 재사용한다.
+    created = []
+    monkeypatch.setattr(A.slack_api, "create_app",
+                        lambda t, m: created.append(m) or {"app_id": "NEW"})
+    monkeypatch.setattr(A.slack_api, "auth_test", lambda b: {"user_id": "Bp1"})
+    monkeypatch.setattr(A.slack_api, "conversations_join", lambda b, c: {"ok": True})
+    ctx = WizardContext(hermes_root=tmp_path)
+    ctx.data.update({
+        "features": ["meeting"], "profiles": _profiles(),
+        "config_token": "xoxe-t", "profile_env_dir": str(tmp_path / "envs"),
+        "participant_app_ids": {"researcher": "A_PRE"},
+    })
+    prompts = ScriptedPrompts({"researcher_bot_token": ["xoxb-r"], "researcher_app_token": ["xapp-r"]})
+    A.SlackAppsStep().apply_with_prompts(ctx, prompts)
+    assert created == []                       # create_app 미호출
+    rp = next(p for p in ctx.data["profiles"] if p["profile_id"] == "researcher")
+    assert rp["app_id"] == "A_PRE"             # 사전 생성 id 재사용
+    assert "SLACK_BOT_TOKEN=xoxb-r" in (tmp_path / "envs" / "researcher.env").read_text()
