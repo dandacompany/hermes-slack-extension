@@ -1,5 +1,7 @@
 # Hermes Slack Extension
 
+한국어 문서: [README.ko.md](README.ko.md)
+
 Turn your self-hosted **Hermes Agent** into a richer Slack workspace with two
 Block Kit experiences:
 
