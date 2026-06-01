@@ -31,10 +31,18 @@ def _install(tmp_path, *, patched=True, overlays=True):
     return root, sdir, bk
 
 
-def test_diagnose_reports_patch_and_overlays(tmp_path):
+def test_diagnose_reports_patch_and_overlays(tmp_path, monkeypatch):
+    # Point HERMES_HOME at a temp config so the kanban-toolset probe is hermetic
+    # (never reads the developer's real ~/.hermes/config.yaml).
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.yaml").write_text("toolsets: [hermes-cli, kanban]\n", encoding="utf-8")
+    monkeypatch.setenv("HERMES_HOME", str(home))
+
     root, sdir, _bk = _install(tmp_path)
     d = T.diagnose(root, sdir)
     assert d["board_patched"] is True and d["meeting_patched"] is True
+    assert d["kanban_toolset_enabled"] is True
     assert "gateway/platforms/slack_kanban_board.py" in d["overlays_present"]
     assert "gateway/platforms/slack_meeting_room.py" in d["overlays_present"]
     assert d["backup_present"] is True

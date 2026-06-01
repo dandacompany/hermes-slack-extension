@@ -14,7 +14,14 @@ REAL = Path(os.environ.get("HERMES_ROOT", str(Path.home() / ".hermes/hermes-agen
 
 @pytest.mark.skipif(not (REAL / "gateway/platforms/slack.py").exists(),
                     reason="no real Hermes checkout")
-def test_board_step_patches_and_compiles(tmp_path):
+def test_board_step_patches_and_compiles(tmp_path, monkeypatch):
+    # Isolate HERMES_HOME to a temp dir so enabling the kanban toolset never
+    # touches the real ~/.hermes/config.yaml.
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.yaml").write_text("toolsets:\n- hermes-cli\n", encoding="utf-8")
+    monkeypatch.setenv("HERMES_HOME", str(home))
+
     # copy only the real slack.py into a temporary root
     root = tmp_path / "hermes-agent"
     (root / "gateway/platforms").mkdir(parents=True)
@@ -30,6 +37,9 @@ def test_board_step_patches_and_compiles(tmp_path):
     patched = (root / "gateway/platforms/slack.py").read_text()
     assert '@self._app.command("/board")' in patched
     assert (root / "gateway/platforms/slack_kanban_board.py").exists()
+    # the board step enables the kanban toolset so NL board management works
+    import yaml
+    assert "kanban" in yaml.safe_load((home / "config.yaml").read_text())["toolsets"]
     # py_compile succeeds
     subprocess.run([sys.executable, "-m", "py_compile",
                     str(root / "gateway/platforms/slack.py")], check=True)

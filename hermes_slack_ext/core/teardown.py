@@ -42,6 +42,7 @@ def diagnose(hermes_root, state_dir) -> dict:
         "slack_py_exists": slack_py.exists(),
         "board_patched": patcher.board_markers_present(text) if text else False,
         "meeting_patched": patcher.meeting_markers_present(text) if text else False,
+        "kanban_toolset_enabled": hermes.kanban_toolset_enabled(),
         "overlays_present": [m for m in OVERLAY_MODULES if (root / m).exists()],
         "backup_root": str(backup_root),
         "backup_present": (backup_root / "gateway/platforms/slack.py").exists(),

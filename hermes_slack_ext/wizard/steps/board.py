@@ -45,6 +45,20 @@ class BoardStep(Step):
             (root / "tests").mkdir(parents=True, exist_ok=True)
             shutil.copy2(ovl_test, root / "tests/test_slack_kanban_board.py")
 
+        # Enable the `kanban` toolset so the agent can manage the board in natural
+        # language (kanban_create/move/...). The Block Kit UI alone only gives the
+        # Add button; without this toolset the agent has no kanban tools and falls
+        # back to a `hermes`/`sqlite3` CLI that may not be on PATH, so NL requests
+        # silently create nothing. Hermes config.yaml lives in HERMES_HOME (data
+        # root), not the code root being patched.
+        cfg = hermes.config_path()
+        outcome = hermes.enable_toolset(cfg, "kanban")
+        if outcome == "enabled":
+            print(f"[board] enabled the `kanban` toolset in {cfg} — restart the gateway to load it.")
+        elif outcome == "no-config":
+            print(f"[board] could not find {cfg}; add `kanban` to your config.yaml `toolsets:` "
+                  "to enable natural-language board management (the Add button works without it).")
+
     def verify(self, ctx: WizardContext) -> None:
         root = Path(ctx.hermes_root)
         py = hermes.venv_python(root)

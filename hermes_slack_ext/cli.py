@@ -209,6 +209,7 @@ def doctor(
     typer.echo(f"  slack.py present : {_mark(d['slack_py_exists'])}")
     typer.echo(f"  board patched    : {_mark(d['board_patched'])}")
     typer.echo(f"  meeting patched  : {_mark(d['meeting_patched'])}")
+    typer.echo(f"  kanban toolset   : {_mark(d['kanban_toolset_enabled'])}")
     typer.echo(f"  overlays         : {d['overlays_present'] or 'none'}")
     typer.echo(f"  backup available : {_mark(d['backup_present'])} @ {d['backup_root']}")
     typer.echo(f"  install record   : {_mark(d['has_record'])}"
@@ -217,6 +218,10 @@ def doctor(
     if not d["has_record"] and (d["board_patched"] or d["meeting_patched"]):
         typer.echo("  ⚠ Patches are applied but there is no install record — "
                    "uninstall will work from the backup/markers only (created apps can't be auto-deleted).")
+    if d["board_patched"] and not d["kanban_toolset_enabled"]:
+        typer.echo("  ⚠ Board is patched but the `kanban` toolset is not enabled — "
+                   "natural-language board management won't work (only the Add button). "
+                   "Add `kanban` to config.yaml `toolsets:` and restart the gateway.")
 
 
 if __name__ == "__main__":
