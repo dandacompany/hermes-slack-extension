@@ -106,6 +106,11 @@ The wizard detects and version-gates Hermes, lets you select features
    (`SLACK_ALLOW_BOTS=mentions`, allow-list of all bots), installs the moderator
    skill, and writes the **mention map** (profile name → bot user id) used for
    auto routing.
+6. **Configures TTS** _(optional, default off → text-only)_ — if you opt in, pick
+   a provider (`edge` / `openai` / `gemini` / `elevenlabs` / …) and the wizard
+   assigns each profile a voice **round-robin** (reusing voices when there are
+   more profiles than the provider offers), writes the provider key, installs its
+   SDK, and stages a per-profile `tts` config block. See [Voice](#meeting-options).
 
 The wizard is **resumable** — re-running continues from the last completed step.
 
@@ -229,14 +234,24 @@ the gateway.
 
 **Voice** — text-to-speech output:
 
-| Value                       | Behavior                                                                          |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `voice-summary` _(default)_ | Each reply ends with one "voice summary" sentence, wrapped in `[TTS]` for speech. |
-| `text-only`                 | No voice — text only.                                                             |
-| `voice-full`                | The whole reply is 2–4 natural spoken sentences, wrapped in `[TTS]`.              |
-| `hybrid`                    | The moderator decides which turns are spoken.                                     |
+| Value                   | Behavior                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `text-only` _(default)_ | No voice — text only.                                                                       |
+| `voice-summary`         | Each reply ends with one natural concluding sentence that is also spoken (wrapped `[TTS]`). |
+| `voice-full`            | The whole reply is 2–4 natural spoken sentences, wrapped in `[TTS]`.                        |
+| `hybrid`                | The moderator decides which turns are spoken.                                               |
 
-Only the `[TTS]…[/TTS]` portion is spoken; Slack uploads default to MP3.
+How voice works: in any voice mode, each bot wraps the text to speak in
+`[TTS]…[/TTS]`. The gateway synthesizes **only** that portion in **the bot's own
+configured voice**, uploads it as an MP3 into the meeting thread, and strips the
+markers (the sentence still shows as text). Mentions and control markers are
+never spoken. Per-profile voices come from the wizard's **TTS step** — without it
+a meeting set to a voice mode simply stays text-only.
+
+> **edge-tts note:** the free `edge` provider serves a small, fixed voice set
+> (only three `ko-KR` voices), so in a Korean meeting a 4th+ profile reuses a
+> voice by design. For more distinct voices use a keyed provider (`openai`,
+> `gemini`, `elevenlabs`).
 
 **Turns** _(default 4)_ — total speaking turns. Only substantive participant
 replies and the final moderator synthesis count; routing, metadata, retries, and
