@@ -148,6 +148,9 @@ _SEND_RETURN_ANCHOR = (
 # scaffolding and convert `@ProfileName` routing into real mentions before the
 # agent's text is formatted/posted. The call is spliced before format_message().
 _SEND_CLEAN_CALL = "            content = self._maybe_clean_meeting_message(chat_id, content)\n"
+# Speak hook: synthesize [TTS]...[/TTS] content with the bot's voice + upload audio,
+# then strip the markers. Spliced after the clean call, before format_message.
+_SEND_SPEAK_CALL = "            content = await self._maybe_speak_meeting_tts(chat_id, content, reply_to)\n"
 _SEND_FORMAT_ANCHOR = (
     "            # Convert standard markdown → Slack mrkdwn\n"
     "            formatted = self.format_message(content)\n"
@@ -227,6 +230,16 @@ def apply_meeting_patch(text: str, methods_frag: str) -> str:
         if _SEND_FORMAT_ANCHOR not in text:
             raise PatchError("send() format_message anchor not found")
         text = text.replace(_SEND_FORMAT_ANCHOR, _SEND_CLEAN_CALL + _SEND_FORMAT_ANCHOR, 1)
+
+    # Speak hook: synthesize [TTS] content + upload audio (inserted after clean, before format).
+    if _SEND_SPEAK_CALL not in text:
+        _old_speak = "            content = await self._maybe_speak_meeting_tts(chat_id, content)\n"
+        if _old_speak in text:
+            text = text.replace(_old_speak, _SEND_SPEAK_CALL, 1)  # migrate the pre-reply_to signature
+        else:
+            if _SEND_FORMAT_ANCHOR not in text:
+                raise PatchError("send() format_message anchor not found")
+            text = text.replace(_SEND_FORMAT_ANCHOR, _SEND_SPEAK_CALL + _SEND_FORMAT_ANCHOR, 1)
 
     _assert_single_bodied_confirm(text)
     return text

@@ -207,6 +207,17 @@ def test_apply_meeting_mentions_ignores_unknown_and_bare_names():
     assert mr.apply_meeting_mentions("Researcher and @Backend speak", m) == "Researcher and @Backend speak"
 
 
+def test_apply_meeting_mentions_handles_trailing_korean_particle():
+    # @Name followed by a Korean particle (no space) must still convert — \b fails
+    # there because Hangul is a word char, so the regex uses an ASCII-word lookahead.
+    m = {"Moderator": "U999", "Researcher": "U111"}
+    assert mr.apply_meeting_mentions("@Moderator께 넘깁니다", m) == "<@U999>께 넘깁니다"
+    assert mr.apply_meeting_mentions("@Researcher님 의견은?", m) == "<@U111>님 의견은?"
+    assert mr.apply_meeting_mentions("@Moderator.", m) == "<@U999>."
+    # do not convert a longer ASCII word that merely starts with the name
+    assert mr.apply_meeting_mentions("@Researchers", m) == "@Researchers"
+
+
 def test_strip_meeting_scaffolding_removes_meeting_block_and_parallel_done():
     text = (
         "[MEETING]\nid: x\nstatus: active\n[/MEETING]\n\n"

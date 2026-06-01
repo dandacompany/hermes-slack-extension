@@ -1,0 +1,102 @@
+# Selectable TTS voices per provider for the meeting wizard (TtsStep).
+#
+# Field meaning:
+#   built_in:         provider is native to Hermes (in BUILTIN_TTS_PROVIDERS); "install" = its Python SDK (pip).
+#   pip:              Python package the wizard pip-installs into the Hermes venv when the provider is missing.
+#   needs_api_key:    env var the provider requires (written to each profile .env).
+#   config_voice_key: where the chosen voice goes in a profile's config -> tts.<provider>.<config_voice_key>.
+#   account_specific: voices are per-account; the wizard fetches via the provider API (when fetch: true) or
+#                     falls back to manual voice-id entry. The `voices` list below is then only a suggestion.
+#   needs_plugin:     NOT a Hermes built-in. Cannot be auto-installed; requires a command-type provider
+#                     (tts.providers.<name>) or a Hermes plugin. The wizard guides + accepts a manual voice id.
+#
+# Hermes built-ins (BUILTIN_TTS_PROVIDERS): edge, elevenlabs, openai, gemini, minimax, xai, mistral, neutts,
+# kittentts, piper. typecast and supertonic are NOT built-in.
+
+edge:
+  label: "Edge TTS (free, no key)"
+  built_in: true
+  pip: "edge-tts"
+  config_voice_key: voice
+  # The wizard assigns these voices to profiles round-robin (cycling in order,
+  # reusing from the top once exhausted), so this list must contain ONLY voices in
+  # the meeting language — a foreign-locale voice would read the transcript with
+  # the wrong accent. This deployment is Korean-first, so the list is the three
+  # ko-KR voices edge-tts actually serves (verified via `edge_tts.list_voices()`).
+  #
+  # edge-tts (the free Microsoft endpoint) serves only a SUBSET of Azure's catalog;
+  # an Azure-only voice (e.g. ko-KR-JiMinNeural) fails silently with
+  # NoAudioReceived. For another meeting language, replace these with that locale's
+  # edge voices — run `edge-tts --list-voices` and keep only the names it prints.
+  voices:
+    - { value: "ko-KR-SunHiNeural", label: "SunHi — KO, female" }
+    - { value: "ko-KR-InJoonNeural", label: "InJoon — KO, male" }
+    - {
+        value: "ko-KR-HyunsuMultilingualNeural",
+        label: "Hyunsu — KO, male, multilingual",
+      }
+
+openai:
+  label: "OpenAI TTS"
+  built_in: true
+  pip: "openai"
+  needs_api_key: VOICE_TOOLS_OPENAI_KEY
+  config_voice_key: voice
+  voices:
+    - { value: "alloy", label: "alloy" }
+    - { value: "echo", label: "echo" }
+    - { value: "fable", label: "fable" }
+    - { value: "onyx", label: "onyx" }
+    - { value: "nova", label: "nova" }
+    - { value: "shimmer", label: "shimmer" }
+
+gemini:
+  label: "Google Gemini TTS"
+  built_in: true
+  pip: "google-genai"
+  needs_api_key: GEMINI_API_KEY
+  config_voice_key: voice
+  voices:
+    - { value: "Zephyr", label: "Zephyr" }
+    - { value: "Puck", label: "Puck" }
+    - { value: "Charon", label: "Charon" }
+    - { value: "Kore", label: "Kore" }
+    - { value: "Fenrir", label: "Fenrir" }
+    - { value: "Aoede", label: "Aoede" }
+    - { value: "Leda", label: "Leda" }
+    - { value: "Orus", label: "Orus" }
+
+elevenlabs:
+  label: "ElevenLabs (account voices)"
+  built_in: true
+  pip: "elevenlabs"
+  needs_api_key: ELEVENLABS_API_KEY
+  account_specific: true
+  fetch: true
+  config_voice_key: voice_id
+  voices:
+    - { value: "21m00Tcm4TlvDq8ikWAM", label: "Rachel — EN, female" }
+    - { value: "pNInz6obpgDQGcFmaJgB", label: "Adam — EN, male" }
+    - { value: "EXAVITQu4vr4xnSDxMaL", label: "Sarah — EN, female" }
+    - { value: "onwK4e9ZLuTAKqWW03F9", label: "Daniel — EN, male" }
+
+typecast:
+  label: "Typecast (plugin / command provider)"
+  built_in: false
+  needs_plugin: true
+  needs_api_key: TYPECAST_API_KEY
+  account_specific: true
+  config_voice_key: voice
+  guide: >
+    Typecast is not a Hermes built-in. Set it up as a command-type provider under
+    tts.providers.typecast (or install a Typecast plugin), then enter the voice id per profile.
+
+supertonic:
+  label: "Supertonic (plugin / command provider)"
+  built_in: false
+  needs_plugin: true
+  account_specific: true
+  config_voice_key: voice
+  guide: >
+    Supertonic is not a Hermes built-in. Set it up as a command-type provider under
+    tts.providers.supertonic (or install a plugin), then enter the voice id per profile.

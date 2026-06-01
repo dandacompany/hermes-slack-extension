@@ -72,6 +72,17 @@ def test_meeting_patch_splices_send_clean_hook():
     assert fmt > clean  # the clean call precedes format_message
 
 
+def test_meeting_patch_splices_tts_speak_hook_after_clean():
+    # The TTS speak hook synthesizes [TTS] content; it must run after the clean
+    # hook and before format_message.
+    out = P.apply_meeting_patch(_SKELETON, _MEETING_FRAG)
+    assert "content = await self._maybe_speak_meeting_tts(chat_id, content, reply_to)" in out
+    clean = out.index("self._maybe_clean_meeting_message(chat_id, content)")
+    speak = out.index("self._maybe_speak_meeting_tts(")
+    fmt = out.index("formatted = self.format_message(content)", speak)
+    assert clean < speak < fmt
+
+
 def test_meeting_patch_raises_without_send_anchor():
     # If slack.py's send() success-return shape changes, fail loudly rather than
     # silently dropping the buttons-on-response hook.
@@ -91,6 +102,23 @@ def test_meeting_patch_is_idempotent():
     once = P.apply_meeting_patch(_SKELETON, _MEETING_FRAG)
     twice = P.apply_meeting_patch(once, _MEETING_FRAG)
     assert once == twice
+
+
+def test_meeting_patch_migrates_pre_reply_to_speak_call():
+    # An already-patched file carrying the old speak-hook signature (no reply_to)
+    # must be migrated to the reply_to form on re-patch — not skipped — so audio
+    # threads correctly. Without the migration the call presence guard would leave
+    # the stale 2-arg call in place.
+    once = P.apply_meeting_patch(_SKELETON, _MEETING_FRAG)
+    stale = once.replace(
+        "content = await self._maybe_speak_meeting_tts(chat_id, content, reply_to)",
+        "content = await self._maybe_speak_meeting_tts(chat_id, content)",
+    )
+    assert "self._maybe_speak_meeting_tts(chat_id, content)\n" in stale  # precondition
+    migrated = P.apply_meeting_patch(stale, _MEETING_FRAG)
+    assert "content = await self._maybe_speak_meeting_tts(chat_id, content, reply_to)" in migrated
+    # exactly one speak call survives (no duplicate insertion)
+    assert migrated.count("self._maybe_speak_meeting_tts(chat_id, content") == 1
 
 
 def test_board_then_meeting_excludes_both_slashes():

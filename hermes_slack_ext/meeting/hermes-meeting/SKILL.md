@@ -141,12 +141,14 @@ Then:
 ## Voice Modes
 
 - `text-only`: no voice-specific formatting.
-- `voice-summary`: participant adds one final "voice summary:" sentence (label rendered in the meeting language).
-- `voice-full`: participant writes 2-4 natural spoken sentences in the meeting language.
+- `voice-summary`: every participant ends with one natural concluding sentence wrapped in `[TTS] ... [/TTS]`.
+- `voice-full`: participant writes 2-4 natural spoken sentences in the meeting language, wrapped in `[TTS] ... [/TTS]`.
 - `hybrid`: moderator states which turns are spoken.
 
 For any voice mode except `text-only`, wrap the exact speakable text (in the meeting language) in `[TTS]...[/TTS]`.
+Participants use these exact markers even if the moderator described a different wrapper or format — always `[TTS] ... [/TTS]`, never inline code and never a "voice summary:" / "요약:" label. The wrapped text is both shown and spoken, so write it as an ordinary sentence.
 Use `[TTS]` for only the summary sentence in `voice-summary`, and for only the spoken answer in `voice-full`.
+When routing in a voice mode, the moderator does NOT dictate the spoken-summary format — it asks only for the content; each participant wraps its own sentence in `[TTS] ... [/TTS]`.
 Keep Slack mentions and any control markers outside `[TTS]`.
 For Slack file uploads, prefer MP3 output by default. Do not configure command TTS as `voice_compatible: true` unless the target platform explicitly requires Opus voice bubbles, because that setting can convert MP3 into OGG.
 

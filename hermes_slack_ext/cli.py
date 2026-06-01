@@ -22,6 +22,7 @@ from hermes_slack_ext.wizard.steps.slack_config_token import SlackConfigTokenSte
 from hermes_slack_ext.wizard.steps.slack_apps import SlackAppsStep
 from hermes_slack_ext.wizard.steps.moderator_app import ModeratorAppStep
 from hermes_slack_ext.wizard.steps.wireup import WireupStep
+from hermes_slack_ext.wizard.steps.tts import TtsStep
 from hermes_slack_ext.wizard.steps.meeting_runtime import MeetingRuntimeStep
 
 app = typer.Typer(
@@ -46,7 +47,7 @@ def _build_steps():
     return [
         DetectStep(), SelectFeaturesStep(), BoardStep(), SlashSwapStep(),
         MeetingProfilesStep(), SlackConfigTokenStep(), SlackAppsStep(),
-        ModeratorAppStep(), WireupStep(), MeetingRuntimeStep(),
+        ModeratorAppStep(), WireupStep(), TtsStep(), MeetingRuntimeStep(),
     ]
 
 
@@ -105,6 +106,12 @@ def install(
         # Participant token/preset keys (<pid>_bot_token / <pid>_app_token / preset_N / <pid>_<field>).
         for k, v in answers.items():
             if k.endswith(("_bot_token", "_app_token")) or k.startswith("preset_"):
+                scripted[k] = v
+        # TTS step: default to text-only (skip) unless the answers file opts in;
+        # pass through provider / per-profile voice / API-key answers when present.
+        scripted["tts_enable"] = bool(answers.get("tts_enable", False))
+        for k, v in answers.items():
+            if k == "tts_provider" or k.startswith("tts_voice_") or (k.startswith("tts_") and k.endswith("_key")):
                 scripted[k] = v
         prompts: Prompts = ScriptedPrompts(scripted)
     else:

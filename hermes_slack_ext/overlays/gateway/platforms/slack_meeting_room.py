@@ -101,11 +101,13 @@ def set_session_thread(store: dict, meeting_id: str, thread_ts: str) -> dict:
 
 
 def build_room_anchor_text(meeting: dict) -> str:
-    """Meeting-start header posted to the channel body (so the meeting
-    conversation and notes stay visible in the channel)."""
+    """Meeting anchor posted to the channel; its real ts becomes the meeting's
+    session thread, so the moderator's setup/routing, every participant reply, the
+    control card, notes, and the End summary all live in one thread (and the
+    button dispatches share that thread's session)."""
     parts = ", ".join(meeting.get("participants", [])) or "—"
     return (f":clipboard: *Meeting started — {meeting.get('title', '(untitled)')}*\n"
-            f"Participants: {parts}\n_This meeting runs in this channel._")
+            f"Participants: {parts}\n_The discussion runs in this thread._")
 
 
 def get_meeting(store: dict, meeting_id: str) -> dict | None:
@@ -188,7 +190,11 @@ def apply_meeting_mentions(text: str, name_to_id: dict) -> str:
         uid = name_to_id.get(name)
         if not uid:
             continue
-        text = re.sub(r"@" + re.escape(name) + r"\b", f"<@{uid}>", text)
+        # Match `@Name` only when not followed by another ASCII word char (so
+        # "@Backend" is not matched by "@Back"). A trailing Korean particle or
+        # punctuation (e.g. "@Moderator께", "@Researcher님", "@Moderator.") still
+        # converts — `\b` would fail there because Hangul counts as a word char.
+        text = re.sub(r"@" + re.escape(name) + r"(?![A-Za-z0-9_])", f"<@{uid}>", text)
     return text
 
 
@@ -412,7 +418,7 @@ def new_meeting_modal_view(channel_id: str, user_id: str, participant_names: lis
              "element": {"type": "plain_text_input", "action_id": "v", "initial_value": "4"}},
             _select_input("mode", "Mode", MODE_OPTIONS, "mixed"),
             _select_input("routing", "Routing", ROUTING_OPTIONS, "auto"),
-            _select_input("voice", "Voice", VOICE_OPTIONS, "voice-summary"),
+            _select_input("voice", "Voice", VOICE_OPTIONS, "text-only"),
         ],
     }
 

@@ -45,6 +45,10 @@ manager_channel_prompt: |
   - Only meeting content is spoken.
   - Do not speak Slack mentions or the `[PARALLEL-DONE]` marker.
   - When precise spoken content matters, wrap only that content in `[TTS] ... [/TTS]`.
+  - In a voice meeting, do NOT tell participants how to format their spoken
+    sentence when you route — each participant wraps their own spoken text. Ask
+    only for the content (for example, "end with a one-sentence takeaway"); never
+    specify a wrapper character or a "voice summary:" label for them.
   - Slack uploads default to mp3; do not request OGG voice-bubble conversion
     unless explicitly required.
 
@@ -82,10 +86,14 @@ participant_channel_prompt: |
     perspective.
 
   TTS:
-  - For a voice-summary request, add one final "voice summary: ..." sentence (in
-    the meeting language).
-  - Wrap only the sentence to be spoken in `[TTS] ... [/TTS]` for voice-summary
-    and voice-full.
+  - For a voice-summary request, you MUST end your reply with exactly one natural
+    concluding sentence wrapped in `[TTS] ... [/TTS]`. Use these exact markers even
+    if the moderator described a different wrapper or format — always
+    `[TTS] ... [/TTS]`, never inline code, and never a "voice summary:" or "요약:"
+    label. The wrapped text is shown AND spoken, so write it as an ordinary
+    sentence. Every participant does this in a voice-summary meeting, so the turn
+    is never silent.
   - For a voice-full request, write the whole reply as 2-4 natural spoken
-    sentences in the meeting language.
-  - Mentions and control markers are not spoken.
+    sentences in the meeting language, wrapped in `[TTS] ... [/TTS]`.
+  - Keep the `@<MODERATOR_NAME>` hand-back and any control markers OUTSIDE the
+    `[TTS] ... [/TTS]` block — mentions and markers are never spoken.

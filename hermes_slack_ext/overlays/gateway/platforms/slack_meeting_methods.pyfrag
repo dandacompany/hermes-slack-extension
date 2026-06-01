@@ -128,7 +128,11 @@
                 pass
         try:
             fallback, blocks = build_meeting_card_blocks(meeting)
-            posted = await client.chat_postMessage(channel=chat_id, text=fallback, blocks=blocks)
+            # Post the card into the meeting thread (once anchored) so the controls
+            # sit with the discussion, not split off at the channel root.
+            posted = await client.chat_postMessage(
+                channel=chat_id, text=fallback, blocks=blocks,
+                thread_ts=(meeting.get("session_thread_id") or None))
             ts = posted.get("ts", "")
             if ts:
                 store = load_store()
@@ -160,6 +164,38 @@
         except Exception:
             return content
 
+    async def _maybe_speak_meeting_tts(self, chat_id: str, content: str, reply_to=None) -> str:
+        """If the agent wrapped speakable text in [TTS]...[/TTS], synthesize it with
+        THIS bot's configured TTS voice (tools.tts_tool reads tts.provider/voice
+        from the bot's config), upload it as audio to the same thread (reply_to),
+        and return the text with the [TTS] markers removed (the inner text stays
+        visible). Gated only on a [TTS] marker being present — NOT on a local live
+        meeting — because participant bots run in their own container and do not
+        hold the meeting in their store; their spoken summary must still synthesize.
+        No-op when there is no marker or synthesis fails."""
+        try:
+            import re as _re
+            if "[TTS]" not in content:
+                return content
+            spoken = "\n".join(b.strip() for b in _re.findall(r"\[TTS\](.*?)\[/TTS\]", content, _re.DOTALL) if b.strip())
+            cleaned = _re.sub(r"\n{3,}", "\n\n", _re.sub(r"\[/?TTS\]", "", content)).strip()
+            if spoken:
+                try:
+                    import asyncio as _asyncio
+                    import json as _json
+                    from tools.tts_tool import text_to_speech_tool
+                    loop = _asyncio.get_event_loop()
+                    result = await loop.run_in_executor(None, text_to_speech_tool, spoken)
+                    data = _json.loads(result) if isinstance(result, str) else (result or {})
+                    path = data.get("file_path") or data.get("path")
+                    if data.get("success") and path:
+                        await self.send_voice(chat_id, path, reply_to=reply_to)
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning("[Slack] meeting TTS synth/upload failed: %s", exc)
+            return cleaned
+        except Exception:
+            return content
+
     async def _post_meeting_note(self, meeting: dict, text: str) -> None:
         """Post an immediate acknowledgement note (button feedback) so the user
         gets a "clicked" signal before the async agent response arrives. Posts to
@@ -174,9 +210,10 @@
     async def _handle_meeting_action(self, ack, body, action) -> None:
         await ack()
         from gateway.platforms.slack_meeting_room import (
-            parse_action_value, get_meeting, set_status, save_store, load_store,
-            new_meeting_modal_view, continue_modal_view, build_start_prompt,
-            build_approve_prompt, build_next_prompt, build_end_prompt,
+            parse_action_value, get_meeting, set_status, set_session_thread,
+            save_store, load_store, new_meeting_modal_view, continue_modal_view,
+            build_start_prompt, build_approve_prompt, build_next_prompt,
+            build_end_prompt, build_room_anchor_text,
         )
         action_id = action.get("action_id", "")
         trigger_id = body.get("trigger_id", "")
@@ -226,6 +263,20 @@
                 await self._post_meeting_note(meeting, ":white_check_mark: Approved — the moderator is kicking off the discussion. This can take up to a minute.")
                 await self._dispatch_meeting_prompt(meeting, build_approve_prompt(meeting))
             else:
+                # First press: anchor the meeting to a REAL channel message. Its ts
+                # becomes the session thread, so the moderator's setup/routing, every
+                # participant reply, the control card, notes, and the End summary all
+                # live in one thread — and the button dispatches join that thread's
+                # session (so End/Continue see the discussion).
+                if not meeting.get("session_thread_id"):
+                    try:
+                        posted = await self._get_client(channel_id).chat_postMessage(
+                            channel=channel_id, text=build_room_anchor_text(meeting))
+                        anchor_ts = posted.get("ts", "")
+                        if anchor_ts:
+                            set_session_thread(store, meeting_id, anchor_ts); save_store(store)
+                    except Exception as exc:  # pragma: no cover - defensive
+                        logger.warning("[Slack] meeting anchor post failed: %s", exc)
                 set_status(store, meeting_id, "review"); save_store(store)
                 await self._post_meeting_note(meeting, ":arrow_forward: Starting — the moderator is drafting the setup. This can take up to a minute.")
                 await self._dispatch_meeting_prompt(meeting, build_start_prompt(meeting))
@@ -242,10 +293,17 @@
             await self._refresh_meeting_surface(body, meeting)
             return
         if kind == "end":
-            await self._post_meeting_note(meeting, ":stop_button: Ending the meeting.")
-            await self._dispatch_meeting_prompt(meeting, build_end_prompt(meeting))
+            # Mark the meeting ended and refresh the card to its no-button "Ended"
+            # state BEFORE dispatching the closing summary. The summary is produced
+            # asynchronously and its send() hook (_maybe_post_meeting_controls)
+            # re-posts the controls; that hook skips ended meetings, so the status
+            # must already be "ended" when it fires. Otherwise the card reappears
+            # with Continue/End buttons next to the closing summary — which reads as
+            # a second End (the bug the user reported).
             set_status(store, meeting_id, "ended"); save_store(store)
+            await self._post_meeting_note(meeting, ":stop_button: Ending the meeting.")
             await self._refresh_meeting_surface(body, meeting)
+            await self._dispatch_meeting_prompt(meeting, build_end_prompt(meeting))
             return
 
     async def _handle_meeting_new_view(self, ack, body, view) -> None:
