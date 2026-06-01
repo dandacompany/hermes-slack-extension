@@ -1,5 +1,9 @@
 # Hermes Slack Extension
 
+[![CI](https://github.com/dandacompany/hermes-slack-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/dandacompany/hermes-slack-extension/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+
 한국어 문서: [README.ko.md](README.ko.md)
 
 Turn your self-hosted **Hermes Agent** into a richer Slack workspace with two

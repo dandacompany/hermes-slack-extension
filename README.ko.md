@@ -1,5 +1,9 @@
 # Hermes Slack Extension
 
+[![CI](https://github.com/dandacompany/hermes-slack-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/dandacompany/hermes-slack-extension/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+
 English README: [README.md](README.md)
 
 자체 호스팅 중인 **Hermes Agent**를 두 가지 Block Kit 경험으로 더 풍부한 Slack
