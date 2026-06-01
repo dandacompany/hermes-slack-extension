@@ -204,6 +204,55 @@ rendered in your topic's language.
 > meeting of several turns takes a few minutes; if it stalls, use **Next** to
 > nudge it or **End** to wrap up.
 
+### Meeting options
+
+The **New meeting** modal exposes the options below. They are passed to the
+moderator as a prompt contract — the moderator (an LLM) interprets and follows
+them; the mechanical parts (`@Name` → real mention, threading) are enforced by
+the gateway.
+
+**Mode** — how turns are distributed:
+
+| Value               | Behavior                                                                                                                                                           | Use when                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `mixed` _(default)_ | The moderator declares a phase plan and mixes modes per phase (e.g. `framing: moderator`, `divergence: parallel`, `critique: sequential`, `synthesis: moderator`). | The most meeting-like flow: diverge → critique → synthesize.        |
+| `sequential`        | One speaker at a time; each reply hands back before the next is called, so participants build on each other.                                                       | Deep, ordered discussion (slower: ~1 min × participants per round). |
+| `parallel`          | Several participants are called at once and reply independently (no cross-mentions); the moderator summarizes after all respond.                                   | Fast divergence / brainstorming; independent perspectives.          |
+| `directed`          | A single targeted question to one profile, then back to the previous flow.                                                                                         | Asking just one expert.                                             |
+
+**Routing** — who picks the next speaker:
+
+| Value              | Behavior                                                                                         | Use when                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| `auto` _(default)_ | The moderator calls the next speaker automatically (`@Name`); the bots self-drive — no clicking. | Hands-off, autonomous meetings.             |
+| `manual`           | No auto-routing; you pick each speaker with the **Next: \<name\>** button on the card.           | Maximum control / demos (a click per turn). |
+
+**Voice** — text-to-speech output:
+
+| Value                       | Behavior                                                                          |
+| --------------------------- | --------------------------------------------------------------------------------- |
+| `voice-summary` _(default)_ | Each reply ends with one "voice summary" sentence, wrapped in `[TTS]` for speech. |
+| `text-only`                 | No voice — text only.                                                             |
+| `voice-full`                | The whole reply is 2–4 natural spoken sentences, wrapped in `[TTS]`.              |
+| `hybrid`                    | The moderator decides which turns are spoken.                                     |
+
+Only the `[TTS]…[/TTS]` portion is spoken; Slack uploads default to MP3.
+
+**Turns** _(default 4)_ — total speaking turns. Only substantive participant
+replies and the final moderator synthesis count; routing, metadata, retries, and
+user interventions do not.
+
+**Recommended combinations**
+
+- General meeting: `mixed` + `auto` _(default)_ — natural multi-phase discussion.
+- Quick idea collection: `parallel` + `auto`.
+- Precise control / demo: `sequential` + `manual`.
+- Single-expert question: `directed`.
+
+> Each turn takes ~1 minute (the reasoning model), so `sequential` × many turns ×
+> many participants can run for several minutes. For speed, use `parallel` or
+> fewer turns.
+
 ---
 
 ## Slash command swap
