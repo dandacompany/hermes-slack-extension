@@ -24,7 +24,7 @@ build-backend = "setuptools.build_meta"
 include = ["hermes_slack_ext*"]
 
 [tool.setuptools.package-data]
-hermes_slack_ext = ["overlays/**/*.py", "overlays/**/*.pyfrag", "meeting/**/*.yaml", "meeting/**/*.md"]
+hermes_slack_ext = ["overlays/**/*.py", "overlays/**/*.pyfrag", "meeting/**/*.yaml", "meeting/**/*.md", "board/**/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -8,6 +8,7 @@ from hermes_slack_ext.core import backups, hermes, patcher
 from hermes_slack_ext.wizard.engine import Step, WizardContext
 
 _OVERLAY = Path(__file__).resolve().parents[2] / "overlays"
+_BOARD_SKILL = Path(__file__).resolve().parents[2] / "board" / "hermes-board" / "SKILL.md"
 
 
 class BoardStep(Step):
@@ -58,6 +59,15 @@ class BoardStep(Step):
         elif outcome == "no-config":
             print(f"[board] could not find {cfg}; add `kanban` to your config.yaml `toolsets:` "
                   "to enable natural-language board management (the Add button works without it).")
+
+        # Install the board-management skill so the agent drives the board
+        # predictably (respect the requested column, treat triage as the
+        # decomposition lane) instead of reshuffling/auto-assigning or shelling out.
+        skills_dir = Path(ctx.data.get("skills_dir")
+                          or (hermes.hermes_home() / "skills"))
+        dest = skills_dir / "hermes-board"
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_BOARD_SKILL, dest / "SKILL.md")
 
     def verify(self, ctx: WizardContext) -> None:
         root = Path(ctx.hermes_root)

@@ -40,6 +40,11 @@ def test_board_step_patches_and_compiles(tmp_path, monkeypatch):
     # the board step enables the kanban toolset so NL board management works
     import yaml
     assert "kanban" in yaml.safe_load((home / "config.yaml").read_text())["toolsets"]
+    # and installs the board-management skill (predictable board control + triage = decompose lane)
+    skill = home / "skills" / "hermes-board" / "SKILL.md"
+    assert skill.exists()
+    body = skill.read_text(encoding="utf-8")
+    assert "Triage is the decomposition lane" in body and "Respect the requested column" in body
     # py_compile succeeds
     subprocess.run([sys.executable, "-m", "py_compile",
                     str(root / "gateway/platforms/slack.py")], check=True)
