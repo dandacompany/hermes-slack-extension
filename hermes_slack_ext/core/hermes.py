@@ -6,7 +6,8 @@ from pathlib import Path
 
 import yaml
 
-SUPPORTED_VERSIONS = ("0.12.0", "0.13.0", "0.14.0", "0.15.0", "0.15.1")
+SUPPORTED_VERSIONS = ("0.12.0", "0.13.0", "0.14.0", "0.15.0", "0.15.1")  # known-good list (reference)
+MIN_SUPPORTED_VERSION = "0.12.0"  # gate: any Hermes >= this is accepted (0.16.0+ included)
 DEFAULT_ROOT = Path.home() / ".hermes" / "hermes-agent"
 
 
@@ -21,8 +22,39 @@ def detect_version(hermes_root: Path) -> str | None:
     return None
 
 
+def _version_tuple(version: str | None) -> tuple[int, int, int] | None:
+    """Parse a dotted version into a (major, minor, patch) int tuple.
+
+    Tolerates suffixes (e.g. ``0.16.0.dev1``, ``0.16.0rc2``) by reading the
+    leading digits of each of the first three components.
+    """
+    if not version:
+        return None
+    nums: list[int] = []
+    for token in str(version).strip().split("."):
+        digits = ""
+        for ch in token:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        nums.append(int(digits) if digits else 0)
+        if len(nums) == 3:
+            break
+    while len(nums) < 3:
+        nums.append(0)
+    return (nums[0], nums[1], nums[2])
+
+
 def is_supported(version: str | None) -> bool:
-    return version in SUPPORTED_VERSIONS
+    """Accept any Hermes version >= ``MIN_SUPPORTED_VERSION`` (0.12.0).
+
+    Previously an exact membership test against ``SUPPORTED_VERSIONS``, which
+    rejected newer releases like 0.16.0 even though the extension still works.
+    """
+    current = _version_tuple(version)
+    minimum = _version_tuple(MIN_SUPPORTED_VERSION)
+    return current is not None and minimum is not None and current >= minimum
 
 
 def venv_python(hermes_root: Path) -> Path:

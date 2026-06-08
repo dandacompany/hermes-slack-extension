@@ -18,5 +18,5 @@ class DetectStep(Step):
         if not hermes.is_supported(version):
             raise RuntimeError(
                 f"Unsupported Hermes version: {version}. "
-                f"Supported: {', '.join(hermes.SUPPORTED_VERSIONS)}"
+                f"Requires Hermes >= {hermes.MIN_SUPPORTED_VERSION}."
             )

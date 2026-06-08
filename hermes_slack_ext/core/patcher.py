@@ -31,6 +31,22 @@ LOCK_SNIPPET = '''\
 '''
 
 
+# Injection point for Block Kit action handlers inside connect(). Hermes 0.16
+# extracted Socket Mode start into ``_start_socket_mode_handler()``, so the old
+# inline "Start Socket Mode handler in background" comment is gone. We anchor on
+# the adjacent slash-confirm action registration (0.16+) and fall back to the
+# pre-0.16 Socket Mode marker, so the extension patches both layouts. Both
+# anchors are 12-space indented, matching the action snippets exactly.
+_ACTION_INJECT_ANCHORS = (
+    "            # Register Block Kit action handlers for slash-confirm buttons\n",  # Hermes 0.16+
+    "            # Start Socket Mode handler in background\n",                         # Hermes <= 0.15.1
+)
+
+
+def _action_inject_anchor(text: str) -> str | None:
+    return next((a for a in _ACTION_INJECT_ANCHORS if a in text), None)
+
+
 class PatchError(RuntimeError):
     pass
 
@@ -72,10 +88,10 @@ def apply_board_patch(text: str, methods_frag: str) -> str:
     text = _apply_slash_exclusion(text, "board")
 
     if "hermes_board_task_create" not in text:
-        marker = "            # Start Socket Mode handler in background\n"
-        if marker not in text:
-            raise PatchError("missing Socket Mode start marker")
-        text = text.replace(marker, BOARD_ACTION_SNIPPET + marker, 1)
+        anchor = _action_inject_anchor(text)
+        if anchor is None:
+            raise PatchError("missing board action-handler injection anchor")
+        text = text.replace(anchor, BOARD_ACTION_SNIPPET + anchor, 1)
 
     methods = methods_frag.rstrip()
     methods_start = "    async def send_kanban_board"
@@ -205,9 +221,10 @@ def apply_meeting_patch(text: str, methods_frag: str) -> str:
     text = _apply_slash_exclusion(text, "meeting")
 
     if "hermes_meeting_new" not in text:
-        if _SOCKET_ANCHOR not in text:
-            raise PatchError("connect() 'Start Socket Mode' anchor not found")
-        text = text.replace(_SOCKET_ANCHOR, MEETING_ACTION_SNIPPET + _SOCKET_ANCHOR, 1)
+        anchor = _action_inject_anchor(text)
+        if anchor is None:
+            raise PatchError("connect() action-handler injection anchor not found")
+        text = text.replace(anchor, MEETING_ACTION_SNIPPET + anchor, 1)
 
     methods = methods_frag.rstrip()
     if _CONFIRM_ANCHOR not in text:
